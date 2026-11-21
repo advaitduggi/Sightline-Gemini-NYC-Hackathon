@@ -320,17 +320,15 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
       : null;
 
   return (
-    <div className="max-w-[1440px] mx-auto px-6 py-8 space-y-8">
-      {/* Header & Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-neutral-200">
+    <div className="max-w-[1920px] mx-auto p-6 lg:p-8 space-y-8">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-[#1e1e1e]/10">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-neutral-950 text-balance">
-            Element 119 Stress Benchmark &amp; Breaking-Point Suite
+          <h1 className="clash-display text-3xl font-bold uppercase text-[#111111]">
+            Element 119 Stress Benchmark
           </h1>
-          <p className="text-sm text-neutral-600 mt-1.5 max-w-2xl leading-relaxed">
-            Pushes live video frames and audio across escalating blur, acoustic noise, and cadence
-            bursts—comparing the single-model ungated baseline against our Decisions API + Gemini 4
-            Neon pipeline.
+          <p className="text-xs text-[#838282] mt-2 max-w-2xl leading-relaxed">
+            Sweeps escalating blur, acoustic noise, and cadence bursts comparing an ungated single-model
+            baseline against Decisions API + Gemini 4 Neon.
           </p>
         </div>
 
@@ -340,7 +338,7 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
             onChange={(e) => setScenarioId(e.target.value)}
             disabled={isRunning}
             aria-label="Select test scenario"
-            className="px-3 py-2 text-xs font-medium bg-white border border-neutral-200 rounded-lg text-neutral-800"
+            className="px-3 py-2 text-xs font-bold uppercase bg-white border border-[#1e1e1e]/15 text-[#111111]"
           >
             {SCENARIO_PRESETS.map((s) => (
               <option key={s.id} value={s.id}>
@@ -349,7 +347,7 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
             ))}
           </select>
 
-          <div className="flex items-center p-1 bg-neutral-100 rounded-lg border border-neutral-200">
+          <div className="flex gap-1">
             {(
               [
                 ['blur_motion', 'Motion Blur'],
@@ -362,10 +360,10 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                 type="button"
                 disabled={isRunning}
                 onClick={() => setDimension(id)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                className={`px-3 py-2 text-[11px] font-bold uppercase border transition-colors whitespace-nowrap cursor-pointer ${
                   dimension === id
-                    ? 'bg-white text-neutral-950 shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
+                    ? 'border-black bg-black text-white'
+                    : 'border-[#1e1e1e]/15 bg-white text-[#111111] hover:bg-[#1e1e1e]/5'
                 }`}
               >
                 {label}
@@ -377,17 +375,17 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
             type="button"
             onClick={runLiveSweep}
             disabled={isRunning}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+            className="inline-flex items-center gap-2 px-5 py-2 text-[11px] font-bold uppercase text-white bg-[#0052cc] hover:opacity-90 disabled:opacity-60 transition-opacity whitespace-nowrap cursor-pointer"
           >
             {isRunning ? (
               <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Running Step {(currentStepIdx ?? 0) + 1}/4</span>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Step {(currentStepIdx ?? 0) + 1}/4</span>
               </>
             ) : (
               <>
-                <Play className="w-4 h-4" />
-                <span>Run Live Stress Sweep</span>
+                <Play className="w-3.5 h-3.5" />
+                <span>Run Stress Sweep</span>
               </>
             )}
           </button>
@@ -397,71 +395,72 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
       {error && (
         <div
           role="alert"
-          className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-sm text-red-900"
+          className="p-4 bg-white border border-red-600/50 flex items-start gap-3 text-xs text-red-900"
         >
-          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold">Benchmark Run Error</p>
+            <p className="font-bold uppercase">Benchmark Error</p>
             <p className="text-red-800 mt-0.5">{error}</p>
           </div>
         </div>
       )}
 
-      {/* Measured KPI Strip */}
+      {/* KPI Strip */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <span className="text-xs text-neutral-500">Steps Completed</span>
-          <p className="font-mono text-2xl font-semibold text-neutral-950 mt-1 tabular-nums">
-            {results.length} / 4
-          </p>
+        <div className="bg-white border border-[#1e1e1e]/10 p-5">
+          <span className="text-[10px] font-bold uppercase text-[#838282]">Steps Completed</span>
+          <p className="mono text-2xl font-bold text-[#111111] mt-2">{results.length} / 4</p>
         </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <span className="text-xs text-neutral-500">Baseline Degraded Triggers</span>
-          <p className="font-mono text-2xl font-semibold text-amber-700 mt-1 tabular-nums">
+        <div className="bg-white border border-[#1e1e1e]/10 p-5">
+          <span className="text-[10px] font-bold uppercase text-[#838282]">
+            Baseline Degraded Triggers
+          </span>
+          <p className="mono text-2xl font-bold text-amber-700 mt-2">
             {results.length > 0 ? `${baselineBadCount} / ${results.length}` : '—'}
           </p>
         </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <span className="text-xs text-neutral-500">Avg Decisions Gate Latency</span>
-          <p className="font-mono text-2xl font-semibold text-neutral-950 mt-1 tabular-nums">
+        <div className="bg-white border border-[#1e1e1e]/10 p-5">
+          <span className="text-[10px] font-bold uppercase text-[#838282]">
+            Avg Decisions Latency
+          </span>
+          <p className="mono text-2xl font-bold text-[#111111] mt-2">
             {avgGateMs !== null ? `${avgGateMs} ms` : '—'}
           </p>
         </div>
-        <div className="bg-white border border-neutral-200 rounded-xl p-4">
-          <span className="text-xs text-neutral-500">First Gated Breaking Point</span>
-          <p className="font-mono text-lg font-semibold text-neutral-950 mt-1 truncate">
+        <div className="bg-white border border-[#1e1e1e]/10 p-5">
+          <span className="text-[10px] font-bold uppercase text-[#838282]">
+            First Gated Breakpoint
+          </span>
+          <p className="mono text-lg font-bold text-[#111111] mt-2 truncate">
             {results.length === 0
               ? '—'
               : gatedBreaks.length > 0
                 ? gatedBreaks[0].stepLabel
-                : `Held all (${avgFit ?? 0}% fit)`}
+                : `Held All (${avgFit ?? 0}% fit)`}
           </p>
         </div>
       </div>
 
-      {/* SVG Calibration Chart + Live Data Table */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Calibrated Probability Trajectory Chart (5 cols) */}
-        <div className="lg:col-span-5 bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
+      <div className="grid grid-cols-12 gap-8 items-start">
+        {/* SVG Calibration Chart (5 cols) */}
+        <div className="col-span-12 lg:col-span-5 bg-white border border-[#1e1e1e]/10 p-6 space-y-4">
           <div>
-            <h2 className="text-sm font-semibold text-neutral-900">
+            <h2 className="clash-display text-xs font-bold uppercase tracking-widest text-[#838282]">
               Decisions API Calibration Trajectory
             </h2>
-            <p className="text-xs text-neutral-500 mt-0.5">
-              Measured <span className="font-mono">frame_usable</span> (blue) and{' '}
-              <span className="font-mono">intent_confirmed</span> (amber) probabilities across
-              escalating stress.
+            <p className="text-[11px] text-[#838282] mt-1">
+              Measured <span className="mono text-[#0052cc]">frame_usable</span> vs.{' '}
+              <span className="mono text-amber-700">intent_confirmed</span> across escalating stress.
             </p>
           </div>
 
-          <div className="h-56 w-full border border-neutral-100 rounded-lg bg-neutral-50 p-3">
+          <div className="h-56 w-full border border-[#1e1e1e]/10 bg-[#f9f9f9] p-3">
             {results.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-neutral-400">
-                Run a live stress sweep to plot measured probability decay.
+              <div className="h-full flex items-center justify-center text-[11px] uppercase font-bold text-[#838282]">
+                Run Stress Sweep to Plot Calibration Curve
               </div>
             ) : (
               <svg viewBox="0 0 360 180" className="w-full h-full overflow-visible">
-                {/* Threshold dashed line */}
                 <line
                   x1="28"
                   x2="344"
@@ -478,17 +477,15 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                   fill="#DC2626"
                   fontFamily="JetBrains Mono, monospace"
                 >
-                  Gate {mitigations.minUsableProb.toFixed(2)}
+                  GATE {mitigations.minUsableProb.toFixed(2)}
                 </text>
 
-                {/* Grid baselines */}
-                <line x1="28" x2="344" y1="160" y2="160" stroke="#E5E7EB" />
-                <line x1="28" x2="344" y1="20" y2="20" stroke="#E5E7EB" />
+                <line x1="28" x2="344" y1="160" y2="160" stroke="#1e1e1e" strokeOpacity="0.15" />
+                <line x1="28" x2="344" y1="20" y2="20" stroke="#1e1e1e" strokeOpacity="0.15" />
 
-                {/* Frame Usable Line */}
                 <polyline
                   fill="none"
-                  stroke="#1D4ED8"
+                  stroke="#0052cc"
                   strokeWidth="2.5"
                   points={results
                     .map((r, idx) => {
@@ -499,7 +496,6 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                     .join(' ')}
                 />
 
-                {/* Intent Confirmed Line */}
                 <polyline
                   fill="none"
                   stroke="#D97706"
@@ -520,14 +516,14 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                   const yIntent = 160 - r.gated.intentProb * 140;
                   return (
                     <g key={r.stepIndex}>
-                      <circle cx={x} cy={yFrame} r="4" fill="#1D4ED8" />
+                      <circle cx={x} cy={yFrame} r="4" fill="#0052cc" />
                       <circle cx={x} cy={yIntent} r="3.5" fill="#D97706" />
                       <text
                         x={x}
                         y="174"
                         textAnchor="middle"
                         fontSize="9"
-                        fill="#6B7280"
+                        fill="#838282"
                         fontFamily="JetBrains Mono, monospace"
                       >
                         {r.stressValue}
@@ -541,41 +537,42 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
           </div>
         </div>
 
-        {/* Side-by-Side Comparison Data Grid (7 cols) */}
-        <div className="lg:col-span-7 bg-white border border-neutral-200 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-neutral-200">
-            <h2 className="text-sm font-semibold text-neutral-900">
-              Baseline vs. Element 119 Gated Pipeline Results
+        {/* Comparison Table (7 cols) */}
+        <div className="col-span-12 lg:col-span-7 bg-white border border-[#1e1e1e]/10 overflow-hidden">
+          <div className="px-6 py-4 border-b border-[#1e1e1e]/10">
+            <h2 className="clash-display text-xs font-bold uppercase tracking-widest text-[#838282]">
+              Baseline vs. Element 119 Gated Results
             </h2>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-neutral-200 bg-neutral-50 text-[11px] font-semibold text-neutral-500">
-                  <th className="py-2.5 px-4">Stress Level</th>
-                  <th className="py-2.5 px-4">Ungated Baseline</th>
-                  <th className="py-2.5 px-4 text-right">Usable</th>
-                  <th className="py-2.5 px-4 text-right">Intent</th>
-                  <th className="py-2.5 px-4">Gated Outcome</th>
-                  <th className="py-2.5 px-4 text-right">Latency</th>
+                <tr className="border-b border-[#1e1e1e]/10 bg-[#f9f9f9] text-[10px] font-bold uppercase text-[#838282]">
+                  <th className="py-3 px-4">Stress Level</th>
+                  <th className="py-3 px-4">Ungated Baseline</th>
+                  <th className="py-3 px-4 text-right">Usable</th>
+                  <th className="py-3 px-4 text-right">Intent</th>
+                  <th className="py-3 px-4">Gated Outcome</th>
+                  <th className="py-3 px-4 text-right">Latency</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-neutral-200 text-xs">
+              <tbody className="divide-y divide-[#1e1e1e]/10 text-xs">
                 {results.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="py-12 text-center text-neutral-500">
-                      Click <strong>Run Live Stress Sweep</strong> to execute 4 live multimodal
-                      calls across Gemini 4 Hydrogen, Decisions API, Gemini 4 Neon, and Shopify MCP.
+                    <td colSpan={6} className="py-12 text-center text-[#838282] text-[11px]">
+                      Click <strong className="text-[#111111]">Run Stress Sweep</strong> to execute
+                      4 live multimodal calls across Gemini 4 Hydrogen, Decisions API, Gemini 4
+                      Neon, and Shopify MCP.
                     </td>
                   </tr>
                 ) : (
                   results.map((row) => (
-                    <tr key={row.stepIndex} className="hover:bg-neutral-50">
-                      <td className="py-3 px-4 font-medium text-neutral-900 whitespace-nowrap">
+                    <tr key={row.stepIndex} className="hover:bg-[#f9f9f9]">
+                      <td className="py-3 px-4 text-[11px] font-bold uppercase text-[#111111] whitespace-nowrap">
                         {row.stepLabel}
                       </td>
-                      <td className="py-3 px-4 text-neutral-600 max-w-[180px] truncate">
+                      <td className="py-3 px-4 text-[11px] text-[#838282] max-w-[180px] truncate">
                         {row.baseline.hallucinatedOrLowQuality ? (
                           <span className="text-amber-700 font-medium">
                             Fired: {row.baseline.topProductTitle || row.baseline.summary}
@@ -584,35 +581,35 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                           <span>{row.baseline.topProductTitle || row.baseline.summary}</span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-neutral-900">
+                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111]">
                         {(row.gated.frameUsableProb * 100).toFixed(0)}%
                       </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-neutral-900">
+                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111]">
                         {(row.gated.intentProb * 100).toFixed(0)}%
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 text-[11px]">
                         {row.gated.brokeHere ? (
-                          <span className="inline-flex items-center gap-1 text-red-700 font-medium">
+                          <span className="inline-flex items-center gap-1 text-red-700 font-bold">
                             <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                             <span className="truncate max-w-[160px]">
                               {row.gated.breakReason || 'Broke'}
                             </span>
                           </span>
                         ) : row.gated.passedGate ? (
-                          <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                          <span className="inline-flex items-center gap-1 text-green-700 font-bold">
                             <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
                             <span className="truncate max-w-[160px]">
                               {row.gated.topProductTitle || 'Matched'}
                             </span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-medium">
+                          <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
                             <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
                             <span>Held ({row.gated.routeChoice})</span>
                           </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right font-mono tabular-nums text-neutral-500">
+                      <td className="py-3 px-4 text-right mono text-[11px] text-[#838282]">
                         {row.gated.latencyMs}ms
                       </td>
                     </tr>

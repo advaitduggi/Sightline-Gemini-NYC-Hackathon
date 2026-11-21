@@ -69,49 +69,49 @@ export function CatalogView({
   };
 
   return (
-    <div className="max-w-[1440px] mx-auto px-6 py-8 space-y-8">
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-neutral-200">
+    <div className="max-w-[1920px] mx-auto p-6 lg:p-8 space-y-8">
+      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-[#1e1e1e]/10">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-neutral-950 text-balance">
-            Shopify Global Catalog MCP Explorer
+          <h1 className="clash-display text-3xl font-bold uppercase text-[#111111]">
+            Shopify Global Catalog MCP
           </h1>
-          <p className="text-sm text-neutral-600 mt-1.5 max-w-2xl leading-relaxed">
-            Direct JSON-RPC 2.0 discovery against Shopify’s Universal Commerce Protocol endpoint (
-            <span className="font-mono text-xs">catalog.shopify.com/api/ucp/mcp</span>) or any custom
-            merchant Storefront MCP URL.
+          <p className="text-xs text-[#838282] mt-2 max-w-2xl leading-relaxed">
+            Direct JSON-RPC 2.0 discovery via{' '}
+            <span className="mono text-[#111111]">catalog.shopify.com/api/ucp/mcp</span> or an
+            optional custom merchant Storefront MCP endpoint.
           </p>
         </div>
 
-        <div className="flex items-center gap-2 text-xs text-neutral-600">
-          <Store className="w-4 h-4 text-neutral-500" />
+        <div className="flex items-center gap-2 text-xs text-[#838282]">
+          <Store className="w-4 h-4 text-[#0052cc]" />
           <input
             type="url"
             value={storefrontMcpUrl}
             onChange={(e) => onChangeStorefrontMcpUrl(e.target.value)}
             placeholder="Optional: https://{shop}.myshopify.com/api/mcp"
             aria-label="Optional custom Shopify Storefront MCP URL"
-            className="w-72 px-3 py-2 text-xs bg-white border border-neutral-200 rounded-lg focus:outline-none focus:border-blue-700"
+            className="w-72 px-3 py-2 text-xs bg-white border border-[#1e1e1e]/15 text-[#111111] placeholder:text-[#b6b5b5] focus:outline-none focus:border-[#0052cc]"
           />
         </div>
       </div>
 
-      {/* Search Form & Preset Chips */}
-      <div className="bg-white border border-neutral-200 rounded-xl p-5 space-y-4">
+      {/* Search Form */}
+      <div className="bg-white border border-[#1e1e1e]/10 p-6 space-y-4">
         <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
-            <Search className="w-4 h-4 text-neutral-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#838282] absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search across Shopify merchants..."
               aria-label="Search Shopify Global Catalog"
-              className="w-full pl-10 pr-4 py-2.5 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-blue-700"
+              className="w-full pl-10 pr-4 py-2.5 text-sm bg-[#f2f2f2] border border-[#1e1e1e]/15 focus:outline-none focus:border-[#0052cc]"
             />
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs text-neutral-600 bg-neutral-50 border border-neutral-200 rounded-lg px-3 py-2">
+            <label className="flex items-center gap-2 text-[10px] font-bold uppercase text-[#838282] bg-[#f2f2f2] border border-[#1e1e1e]/15 px-3 py-2.5">
               <span>Max USD</span>
               <input
                 type="number"
@@ -119,14 +119,14 @@ export function CatalogView({
                 max={5000}
                 value={maxPriceUsd}
                 onChange={(e) => setMaxPriceUsd(e.target.value)}
-                className="w-16 font-mono text-xs bg-transparent focus:outline-none text-neutral-900 tabular-nums"
+                className="w-16 mono text-xs bg-transparent focus:outline-none text-[#111111]"
               />
             </label>
 
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              className="px-5 py-2.5 text-[11px] font-bold uppercase text-white bg-[#0052cc] hover:opacity-90 disabled:opacity-60 transition-opacity whitespace-nowrap cursor-pointer"
             >
               {loading ? 'Searching...' : 'Search Catalog'}
             </button>
@@ -134,7 +134,7 @@ export function CatalogView({
         </form>
 
         <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-1.5">
             {SUGGESTED_QUERIES.map((q) => (
               <button
                 key={q}
@@ -143,10 +143,10 @@ export function CatalogView({
                   setQuery(q);
                   runSearch(q);
                 }}
-                className={`px-3 py-1 text-xs font-medium rounded-md border transition-colors cursor-pointer ${
+                className={`px-3 py-1.5 text-[10px] font-bold uppercase border transition-colors cursor-pointer ${
                   query === q
-                    ? 'bg-neutral-900 text-white border-neutral-900'
-                    : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    ? 'bg-black text-white border-black'
+                    : 'bg-white text-[#111111] border-[#1e1e1e]/15 hover:bg-[#1e1e1e]/5'
                 }`}
               >
                 {q}
@@ -155,8 +155,8 @@ export function CatalogView({
           </div>
 
           {latencyMs !== null && (
-            <span className="font-mono text-xs text-neutral-500 tabular-nums">
-              {products.length} products · {latencyMs}ms · {endpointUsed.replace('https://', '')}
+            <span className="mono text-[10px] text-[#838282]">
+              {products.length} ITEMS · {latencyMs}MS · {endpointUsed.replace('https://', '')}
             </span>
           )}
         </div>
@@ -165,26 +165,28 @@ export function CatalogView({
       {error && (
         <div
           role="alert"
-          className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-sm text-red-900"
+          className="p-4 bg-white border border-red-600/50 flex items-start gap-3 text-xs text-red-900"
         >
-          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
           <div>
-            <p className="font-semibold">Shopify MCP Error</p>
+            <p className="font-bold uppercase">Shopify MCP Error</p>
             <p className="text-red-800 mt-0.5">{error}</p>
           </div>
         </div>
       )}
 
       {loading ? (
-        <div className="py-16 flex flex-col items-center justify-center gap-3 text-neutral-500">
-          <Loader2 className="w-7 h-7 animate-spin text-blue-700" />
-          <span className="text-sm">Querying Shopify Global Catalog MCP...</span>
+        <div className="py-16 flex flex-col items-center justify-center gap-3 text-[#838282]">
+          <Loader2 className="w-6 h-6 animate-spin text-[#0052cc]" />
+          <span className="text-[11px] font-bold uppercase">
+            Querying Shopify Global Catalog MCP...
+          </span>
         </div>
       ) : products.length === 0 ? (
-        <div className="py-16 text-center bg-white border border-neutral-200 rounded-xl">
-          <p className="text-sm font-medium text-neutral-900">No available products found</p>
-          <p className="text-xs text-neutral-500 mt-1">
-            Try raising your max price filter or using broader material keywords.
+        <div className="py-16 text-center bg-white border border-[#1e1e1e]/10">
+          <p className="text-xs font-bold uppercase text-[#111111]">No Available Products Found</p>
+          <p className="text-xs text-[#838282] mt-1">
+            Raise the max price cap or adjust your material keywords.
           </p>
         </div>
       ) : (

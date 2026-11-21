@@ -1,19 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  AlertTriangle,
-  Camera,
-  CheckCircle2,
-  Film,
-  Loader2,
-  Mic,
-  MicOff,
-  Pause,
-  Play,
-  ShieldAlert,
-  Sparkles,
-  Upload,
-  Zap,
-} from 'lucide-react';
+import { AlertTriangle, Loader2, Mic, MicOff, Zap } from 'lucide-react';
 import { SCENARIO_PRESETS } from '../data/scenarios';
 import {
   CatalogProduct,
@@ -41,6 +27,8 @@ interface LiveStudioViewProps {
   onRecordFailure: (failure: FailureRecord) => void;
 }
 
+const AMPLITUDE_DELAYS = ['0.1s', '0.3s', '0.2s', '0.4s', '0.05s', '0.15s', '0.25s', '0.35s'];
+
 export function LiveStudioView({
   stressConfig,
   onChangeStress,
@@ -62,6 +50,7 @@ export function LiveStudioView({
   const [mediaError, setMediaError] = useState<string | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
   const [dedupSkippedCount, setDedupSkippedCount] = useState(0);
+  const [elapsedSec, setElapsedSec] = useState(0);
 
   const [latestTrace, setLatestTrace] = useState<PipelineTrace | null>(null);
   const [traceHistory, setTraceHistory] = useState<PipelineTrace[]>([]);
@@ -74,7 +63,6 @@ export function LiveStudioView({
   const prevLumaRef = useRef<Uint8ClampedArray | null>(null);
   const inFlightRef = useRef(false);
 
-  // Live Mic PCM ring buffer
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pcmBufferRef = useRef<Float32Array[]>([]);
@@ -88,7 +76,6 @@ export function LiveStudioView({
     }
   }, [selectedScenarioId, sourceMode, scenario.spokenPrompt]);
 
-  // Load scenario image
   useEffect(() => {
     if (sourceMode !== 'scenario') return;
     const img = new Image();
@@ -98,6 +85,12 @@ export function LiveStudioView({
       imgRef.current = img;
     };
   }, [scenario.imagePath, sourceMode]);
+
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setElapsedSec((s) => s + 1), 1000);
+    return () => clearInterval(id);
+  }, [isStreaming]);
 
   const stopCameraAndMic = useCallback(() => {
     if (micStreamRef.current) {
@@ -175,7 +168,6 @@ export function LiveStudioView({
     };
   }, [sourceMode, startCameraAndMic, stopCameraAndMic]);
 
-  // Continuous 30fps preview render loop onto canvas with stress transforms
   useEffect(() => {
     let rafId = 0;
     const render = () => {
@@ -249,7 +241,6 @@ export function LiveStudioView({
       const canvas = canvasRef.current;
       if (!canvas || inFlightRef.current) return;
 
-      // Frame-diff deduplication mitigation when streaming continuously
       if (isFromLoop && mitigations.frameDedup) {
         const { deltaRatio, snapshot } = computeFrameLumaDelta(prevLumaRef.current, canvas);
         prevLumaRef.current = snapshot;
@@ -305,7 +296,6 @@ export function LiveStudioView({
         setLatestTrace(fullTrace);
         setTraceHistory((prev) => [fullTrace, ...prev].slice(0, 12));
 
-        // Automatically capture notable gate holds or baseline blur triggers into Failure Log
         if (
           fullTrace.status === 'held_by_gate' ||
           (fullTrace.mode === 'baseline' && stressConfig.blurRadiusPx >= 5)
@@ -352,7 +342,6 @@ export function LiveStudioView({
     ],
   );
 
-  // Continuous loop timer driven by targetFps
   useEffect(() => {
     if (!isStreaming) return;
     const intervalMs = Math.max(250, Math.round(1000 / Math.max(0.5, stressConfig.targetFps)));
@@ -362,70 +351,50 @@ export function LiveStudioView({
     return () => clearInterval(timer);
   }, [isStreaming, stressConfig.targetFps, analyzeFrameNow]);
 
-  return (
-    <div className="max-w-[1440px] mx-auto px-6 py-8 space-y-8">
-      {/* Workspace Header & Source Controls */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4 pb-6 border-b border-neutral-200">
-        <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-neutral-950 text-balance">
-            Live Vision-to-Commerce Studio
-          </h1>
-          <p className="text-sm text-neutral-600 mt-1.5 max-w-2xl leading-relaxed">
-            Streams raw video frames and audio through Gemini 4 Hydrogen, zero-token Decisions API
-            gating, Gemini 4 Neon spatial synthesis, and Shopify Global Catalog MCP.
-          </p>
-        </div>
+  const formattedClock = `00:${String(Math.floor(elapsedSec / 60)).padStart(2, '0')}:${String(
+    elapsedSec % 60,
+  ).padStart(2, '0')}`;
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Source Mode Segmented Control */}
-          <div className="flex items-center p-1 bg-neutral-100 rounded-lg border border-neutral-200">
-            <button
-              type="button"
-              onClick={() => setSourceMode('scenario')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                sourceMode === 'scenario'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <Film className="w-3.5 h-3.5" />
-              <span>Scenario Stream</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceMode('camera')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                sourceMode === 'camera'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <Camera className="w-3.5 h-3.5" />
-              <span>Live Camera + Mic</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setSourceMode('upload')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                sourceMode === 'upload'
-                  ? 'bg-white text-neutral-950 shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
-              }`}
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload Video</span>
-            </button>
+  return (
+    <div className="max-w-[1920px] mx-auto p-6 lg:p-8 grid grid-cols-12 gap-8">
+      {/* LEFT SIDE: 7 columns (Capture & Control) */}
+      <section className="col-span-12 lg:col-span-7 flex flex-col gap-6">
+        {/* E.1 Source Mode Switcher + Pipeline Mode */}
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#1e1e1e]/10 pb-4">
+          <div className="flex flex-wrap gap-1">
+            {(
+              [
+                ['scenario', 'Scenario Stream'],
+                ['camera', 'Live Camera + Mic'],
+                ['upload', 'Upload Video'],
+              ] as const
+            ).map(([id, label]) => {
+              const active = sourceMode === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setSourceMode(id)}
+                  className={`px-4 py-1.5 text-xs font-bold uppercase border transition-colors whitespace-nowrap cursor-pointer ${
+                    active
+                      ? 'border-black bg-black text-white'
+                      : 'border-[#1e1e1e]/10 bg-transparent hover:bg-[#1e1e1e]/5 text-[#111111]'
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Pipeline Architecture Toggle */}
-          <div className="flex items-center p-1 bg-neutral-100 rounded-lg border border-neutral-200">
+          <div className="flex gap-1">
             <button
               type="button"
               onClick={() => setPipelineMode('gated')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-1.5 text-[11px] font-bold uppercase border transition-colors whitespace-nowrap cursor-pointer ${
                 pipelineMode === 'gated'
-                  ? 'bg-white text-blue-700 shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
+                  ? 'border-[#0052cc] bg-[#0052cc] text-white'
+                  : 'border-[#1e1e1e]/10 bg-transparent hover:bg-[#1e1e1e]/5 text-[#111111]'
               }`}
             >
               Element 119 Gated
@@ -433,239 +402,222 @@ export function LiveStudioView({
             <button
               type="button"
               onClick={() => setPipelineMode('baseline')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-1.5 text-[11px] font-bold uppercase border transition-colors whitespace-nowrap cursor-pointer ${
                 pipelineMode === 'baseline'
-                  ? 'bg-white text-amber-700 shadow-xs'
-                  : 'text-neutral-600 hover:text-neutral-900'
+                  ? 'border-black bg-black text-white'
+                  : 'border-[#1e1e1e]/10 bg-transparent hover:bg-[#1e1e1e]/5 text-[#111111]'
               }`}
             >
               Ungated Baseline
             </button>
           </div>
         </div>
-      </div>
 
-      {apiError && (
-        <div
-          role="alert"
-          className="p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3 text-sm text-red-900"
-        >
-          <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
-          <div className="flex-1">
-            <p className="font-semibold">Pipeline Error</p>
-            <p className="text-red-800 mt-0.5">{apiError}</p>
+        {/* Scenario Selector Strip */}
+        {sourceMode === 'scenario' && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {SCENARIO_PRESETS.map((preset) => {
+              const selected = preset.id === selectedScenarioId;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setSelectedScenarioId(preset.id)}
+                  className={`text-left p-3 border transition-colors cursor-pointer ${
+                    selected
+                      ? 'bg-black text-white border-black'
+                      : 'bg-white border-[#1e1e1e]/10 text-[#111111] hover:border-[#1e1e1e]/35'
+                  }`}
+                >
+                  <p className="text-[11px] font-bold uppercase truncate">{preset.title}</p>
+                  <p
+                    className={`text-[10px] mt-0.5 truncate ${
+                      selected ? 'text-[#b6b5b5]' : 'text-[#838282]'
+                    }`}
+                  >
+                    {preset.category}
+                  </p>
+                </button>
+              );
+            })}
           </div>
+        )}
+
+        {sourceMode === 'upload' && (
+          <div className="p-4 bg-white border border-[#1e1e1e]/10 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-xs font-bold uppercase text-[#111111]">
+                Load Local Video Footage (.mp4, .webm, .mov)
+              </p>
+              <p className="text-[11px] text-[#838282] mt-0.5">
+                Canvas samples frames live with active stress injectors applied.
+              </p>
+            </div>
+            <label className="px-4 py-2 text-[11px] font-bold uppercase border border-[#1e1e1e] btn-invert cursor-pointer whitespace-nowrap">
+              Choose Video
+              <input
+                type="file"
+                accept="video/*"
+                onChange={handleVideoFileUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
+        )}
+
+        {mediaError && (
+          <div className="p-3 bg-white border border-amber-600/40 text-xs text-amber-800">
+            {mediaError}
+          </div>
+        )}
+
+        {apiError && (
+          <div
+            role="alert"
+            className="p-4 bg-white border border-red-600/50 flex items-start gap-3 text-xs text-red-900"
+          >
+            <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-bold uppercase">Pipeline Error</p>
+              <p className="mt-0.5 text-red-800">{apiError}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setApiError(null)}
+              className="text-[10px] font-bold uppercase underline cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
+
+        {/* E.2 Video Canvas Area (16:9 Aspect Ratio) */}
+        <div className="relative aspect-video bg-gradient-to-br from-[#e8e8e8] to-[#f2f2f2] rounded-sm overflow-hidden border border-[#1e1e1e]/10">
+          <video ref={videoRef} playsInline muted className="hidden" />
+
+          {/* Optical Reticle Placeholder when live camera/upload not active yet */}
+          {sourceMode !== 'scenario' && !cameraReady && (
+            <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
+              <div className="w-32 h-32 border-2 border-dashed border-black rounded-full animate-pulse" />
+              <div className="absolute w-full h-[1px] bg-black" />
+              <div className="absolute h-full w-[1px] bg-black" />
+            </div>
+          )}
+
+          <canvas
+            ref={canvasRef}
+            width={960}
+            height={540}
+            className="w-full h-full object-cover"
+          />
+
+          {/* Scrim & Telemetry (Bottom Overlay) */}
+          <div className="absolute bottom-0 inset-x-0 h-32 scrim-bottom flex items-end justify-between p-6 pointer-events-none">
+            <div className="flex items-center gap-4">
+              {/* 8-Bar Cobalt Amplitude Meter */}
+              <div className="flex gap-1 h-8 items-end">
+                {AMPLITUDE_DELAYS.map((delay, idx) => (
+                  <div
+                    key={delay}
+                    className={`w-1 bg-[#0052cc] ${isStreaming || micActive ? 'amplitude-bar' : ''}`}
+                    style={
+                      isStreaming || micActive
+                        ? { animationDelay: delay }
+                        : {
+                            height: `${Math.max(
+                              18,
+                              Math.min(88, Math.round(audioLevel * 100 * (0.65 + (idx % 3) * 0.2))),
+                            )}%`,
+                          }
+                    }
+                  />
+                ))}
+              </div>
+              <div className="text-white mono text-[10px] uppercase tracking-widest">
+                16.0 kHz Mono ·{' '}
+                {pipelineMode === 'gated' ? 'Gated Stream' : 'Ungated Baseline'}
+              </div>
+            </div>
+
+            <div className="text-white mono text-[10px] uppercase tracking-widest">
+              {isStreaming ? 'REC' : 'READY'} · {formattedClock} · {stressConfig.targetFps} FPS
+              {mitigations.frameDedup && dedupSkippedCount > 0
+                ? ` · DEDUP ${dedupSkippedCount}`
+                : ''}
+            </div>
+          </div>
+        </div>
+
+        {/* E.3 Prompt Input with Mic Icon, Analyze Trigger & Loop Toggle */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 border border-[#1e1e1e]/20 p-4 bg-white rounded-sm">
+          {sourceMode === 'camera' && micActive ? (
+            <Mic className="w-5 h-5 text-[#0052cc] shrink-0" />
+          ) : (
+            <MicOff className="w-5 h-5 text-[#0052cc] shrink-0" />
+          )}
+
+          <input
+            type="text"
+            value={spokenHint}
+            onChange={(e) => setSpokenHint(e.target.value)}
+            aria-label="Spoken voice prompt or scenario transcript"
+            placeholder="Describe the item you are holding..."
+            className="flex-1 min-w-[180px] bg-transparent outline-none text-sm font-medium text-[#111111] placeholder:text-[#b6b5b5]"
+          />
+
           <button
             type="button"
-            onClick={() => setApiError(null)}
-            className="text-xs font-medium text-red-700 hover:underline cursor-pointer"
+            onClick={() => analyzeFrameNow(false)}
+            disabled={isAnalyzing}
+            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0052cc] text-white text-[11px] font-bold uppercase hover:opacity-90 disabled:opacity-60 transition-opacity whitespace-nowrap cursor-pointer"
           >
-            Dismiss
+            {isAnalyzing ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Zap className="w-3.5 h-3.5" />
+            )}
+            <span>{isAnalyzing ? 'Running' : 'Analyze Frame'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setIsStreaming((s) => !s)}
+            aria-pressed={isStreaming}
+            className="flex items-center gap-2 border-l pl-4 border-[#1e1e1e]/10 cursor-pointer shrink-0"
+          >
+            <span className="text-[10px] font-bold uppercase tracking-tighter text-[#111111]">
+              Loop
+            </span>
+            <div
+              className={`w-8 h-4 rounded-full relative flex items-center px-0.5 transition-colors ${
+                isStreaming ? 'bg-[#0052cc]' : 'bg-black'
+              }`}
+            >
+              <div
+                className={`w-3 h-3 bg-white rounded-full transition-transform duration-150 ${
+                  isStreaming ? 'translate-x-4' : 'translate-x-0'
+                }`}
+              />
+            </div>
           </button>
         </div>
-      )}
 
-      {/* Main 12-Column Split Studio */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-        {/* Left Column: Live Video Canvas + Audio + Stress Controls (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
-          {/* Scenario Selector or Upload Picker */}
-          {sourceMode === 'scenario' && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {SCENARIO_PRESETS.map((preset) => {
-                const selected = preset.id === selectedScenarioId;
-                return (
-                  <button
-                    key={preset.id}
-                    type="button"
-                    onClick={() => setSelectedScenarioId(preset.id)}
-                    className={`text-left p-3 rounded-xl border transition-colors cursor-pointer ${
-                      selected
-                        ? 'bg-white border-blue-700 text-neutral-950'
-                        : 'bg-neutral-50 border-neutral-200 text-neutral-600 hover:bg-white hover:text-neutral-900'
-                    }`}
-                  >
-                    <p className="text-xs font-semibold line-clamp-1">{preset.title}</p>
-                    <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-1">
-                      {preset.category}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        {/* E.4 Stress Control Grid (2 Columns) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#1e1e1e]/10 pt-6">
+          {/* LEFT: Stress Injector */}
+          <div className="flex flex-col gap-4">
+            <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
+              Stress Injector
+            </h4>
 
-          {sourceMode === 'upload' && (
-            <div className="p-4 bg-white border border-neutral-200 rounded-xl flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-neutral-900">
-                  Load local video footage (.mp4, .webm, .mov)
-                </p>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Frames are sampled live from the canvas with your active stress settings applied.
-                </p>
-              </div>
-              <label className="px-4 py-2 text-xs font-medium text-white bg-neutral-900 hover:bg-neutral-800 rounded-lg cursor-pointer whitespace-nowrap">
-                Choose Video
-                <input
-                  type="file"
-                  accept="video/*"
-                  onChange={handleVideoFileUpload}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          )}
-
-          {mediaError && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900">
-              {mediaError}
-            </div>
-          )}
-
-          {/* Live Video + Canvas Viewport */}
-          <div className="bg-white border border-neutral-200 rounded-xl overflow-hidden">
-            <div className="relative aspect-[16/9] bg-neutral-950">
-              <video ref={videoRef} playsInline muted className="hidden" />
-              <canvas
-                ref={canvasRef}
-                width={960}
-                height={540}
-                className="w-full h-full object-cover"
-              />
-
-              {/* Subtle measured scrim only at bottom edge for stream telemetry */}
-              <div className="absolute inset-x-0 bottom-0 px-4 py-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent flex items-center justify-between text-white text-xs">
-                <div className="flex items-center gap-2 font-mono tabular-nums">
-                  {isStreaming && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  )}
-                  <span>
-                    {sourceMode === 'scenario'
-                      ? scenario.title
-                      : sourceMode === 'camera'
-                        ? cameraReady
-                          ? 'Webcam Feed Active'
-                          : 'Awaiting Camera'
-                        : 'Uploaded Video'}
-                  </span>
-                  <span aria-hidden="true">·</span>
-                  <span>{stressConfig.targetFps} FPS</span>
-                  <span aria-hidden="true">·</span>
-                  <span>Blur {stressConfig.blurRadiusPx}px</span>
-                </div>
-
-                {mitigations.frameDedup && dedupSkippedCount > 0 && (
-                  <span className="font-mono text-neutral-300 tabular-nums">
-                    Dedup skipped: {dedupSkippedCount}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Acoustic Waveform + Spoken Intent Strip */}
-            <div className="p-4 border-t border-neutral-200 space-y-3">
-              <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2 text-xs text-neutral-600">
-                  {sourceMode === 'camera' && micActive ? (
-                    <Mic className="w-4 h-4 text-blue-700" />
-                  ) : (
-                    <MicOff className="w-4 h-4 text-neutral-400" />
-                  )}
-                  <span className="font-medium text-neutral-900">
-                    {sourceMode === 'camera' && micActive
-                      ? 'Live Microphone Capture (16kHz WAV)'
-                      : `Acoustic Stress Stream · ${Math.round(stressConfig.noiseMixLevel * 100)}% noise floor`}
-                  </span>
-                </div>
-
-                {/* Live Audio Amplitude Meter */}
-                <div className="flex items-center gap-1 h-4" aria-hidden="true">
-                  {Array.from({ length: 16 }).map((_, idx) => {
-                    const active = audioLevel * 16 > idx;
-                    return (
-                      <span
-                        key={idx}
-                        className={`w-1 rounded-sm transition-all duration-75 ${
-                          active
-                            ? idx > 12
-                              ? 'h-4 bg-amber-600'
-                              : 'h-3.5 bg-blue-700'
-                            : 'h-1.5 bg-neutral-200'
-                        }`}
-                      />
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="flex flex-col sm:flex-row gap-2.5">
-                <input
-                  type="text"
-                  value={spokenHint}
-                  onChange={(e) => setSpokenHint(e.target.value)}
-                  aria-label="Spoken voice prompt or scenario transcript"
-                  placeholder="Spoken intent or voice prompt..."
-                  className="flex-1 px-3 py-2 text-sm bg-neutral-50 border border-neutral-200 rounded-lg focus:outline-none focus:border-blue-700"
-                />
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => analyzeFrameNow(false)}
-                    disabled={isAnalyzing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
-                  >
-                    {isAnalyzing ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Zap className="w-4 h-4" />
-                    )}
-                    <span>Analyze Frame</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setIsStreaming((s) => !s)}
-                    className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg border transition-colors whitespace-nowrap cursor-pointer ${
-                      isStreaming
-                        ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                        : 'bg-white text-neutral-800 border-neutral-200 hover:bg-neutral-50'
-                    }`}
-                  >
-                    {isStreaming ? (
-                      <>
-                        <Pause className="w-4 h-4" />
-                        <span>Stop Loop</span>
-                      </>
-                    ) : (
-                      <>
-                        <Play className="w-4 h-4" />
-                        <span>Start Loop</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Stress Injectors & Pipeline Mitigations Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-white border border-neutral-200 rounded-xl p-5">
             <div className="space-y-4">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-900">
-                  Real-World Input Stressors
-                </h2>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Degrade live video &amp; audio to locate breaking thresholds.
-                </p>
-              </div>
-
-              <label className="block space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Motion Blur</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
-                    {stressConfig.blurRadiusPx} px
+              <div className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Motion Blur
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
+                    {stressConfig.blurRadiusPx.toFixed(1)}px
                   </span>
                 </div>
                 <input
@@ -677,14 +629,16 @@ export function LiveStudioView({
                   onChange={(e) =>
                     onChangeStress({ ...stressConfig, blurRadiusPx: Number(e.target.value) })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
+              </div>
 
-              <label className="block space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Acoustic Noise Floor</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
+              <div className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Acoustic Noise
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
                     {Math.round(stressConfig.noiseMixLevel * 100)}%
                   </span>
                 </div>
@@ -697,14 +651,16 @@ export function LiveStudioView({
                   onChange={(e) =>
                     onChangeStress({ ...stressConfig, noiseMixLevel: Number(e.target.value) })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
+              </div>
 
-              <label className="block space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Low-Light Dimming</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
+              <div className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Low-Light Dimming
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
                     {Math.round(stressConfig.lowLightDimming * 100)}%
                   </span>
                 </div>
@@ -717,14 +673,16 @@ export function LiveStudioView({
                   onChange={(e) =>
                     onChangeStress({ ...stressConfig, lowLightDimming: Number(e.target.value) })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
+              </div>
 
-              <label className="block space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Stream Cadence</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
+              <div className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Stream Cadence
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
                     {stressConfig.targetFps} FPS
                   </span>
                 </div>
@@ -737,57 +695,73 @@ export function LiveStudioView({
                   onChange={(e) =>
                     onChangeStress({ ...stressConfig, targetFps: Number(e.target.value) })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
-            </div>
-
-            <div className="space-y-4 md:border-l md:border-neutral-200 md:pl-6">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-900">
-                  Architectural Mitigations
-                </h2>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Toggle Decisions API &amp; stream safeguards live.
-                </p>
               </div>
+            </div>
+          </div>
 
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mitigations.blurGate}
-                  onChange={(e) =>
-                    onChangeMitigations({ ...mitigations, blurGate: e.target.checked })
-                  }
-                  className="mt-0.5 accent-blue-700"
-                />
-                <span className="text-xs text-neutral-700 leading-relaxed">
-                  <strong className="font-medium text-neutral-900">Decisions API Pre-Gate</strong>
-                  <br />
-                  Short-circuits blurry frames &amp; background chatter before Gemini 4 Neon runs.
+          {/* RIGHT: Mitigation Gate */}
+          <div className="flex flex-col gap-4">
+            <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
+              Mitigation Gate
+            </h4>
+
+            <div className="grid grid-cols-1 gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeMitigations({ ...mitigations, blurGate: !mitigations.blurGate })
+                }
+                className="flex items-center gap-2.5 text-left cursor-pointer group"
+              >
+                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                  {mitigations.blurGate && <div className="w-1.5 h-1.5 bg-black" />}
+                </div>
+                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                  Decisions API Pre-Filtering
                 </span>
-              </label>
+              </button>
 
-              <label className="flex items-start gap-2.5 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={mitigations.frameDedup}
-                  onChange={(e) =>
-                    onChangeMitigations({ ...mitigations, frameDedup: e.target.checked })
-                  }
-                  className="mt-0.5 accent-blue-700"
-                />
-                <span className="text-xs text-neutral-700 leading-relaxed">
-                  <strong className="font-medium text-neutral-900">Luma Frame-Diff Dedup</strong>
-                  <br />
-                  Skips static frames during high-FPS bursts to avoid queue congestion.
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeMitigations({ ...mitigations, frameDedup: !mitigations.frameDedup })
+                }
+                className="flex items-center gap-2.5 text-left cursor-pointer group"
+              >
+                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                  {mitigations.frameDedup && <div className="w-1.5 h-1.5 bg-black" />}
+                </div>
+                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                  Luma Frame-Diff Deduplication
                 </span>
-              </label>
+              </button>
 
-              <label className="block space-y-1 pt-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Min Frame Usability Gate</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
+              <button
+                type="button"
+                onClick={() =>
+                  onChangeMitigations({
+                    ...mitigations,
+                    confidenceHysteresis: !mitigations.confidenceHysteresis,
+                  })
+                }
+                className="flex items-center gap-2.5 text-left cursor-pointer group"
+              >
+                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                  {mitigations.confidenceHysteresis && <div className="w-1.5 h-1.5 bg-black" />}
+                </div>
+                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                  Visual-Fit Rubric Sorting
+                </span>
+              </button>
+
+              <div className="space-y-2 pt-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Min Usability Gate
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
                     {mitigations.minUsableProb.toFixed(2)}
                   </span>
                 </div>
@@ -803,14 +777,16 @@ export function LiveStudioView({
                       minUsableProb: Number(e.target.value),
                     })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
+              </div>
 
-              <label className="block space-y-1">
-                <div className="flex justify-between text-xs">
-                  <span className="text-neutral-700">Min Acoustic Intent Gate</span>
-                  <span className="font-mono tabular-nums text-neutral-900">
+              <div className="space-y-2">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold text-[#838282]">
+                    Min Intent Gate
+                  </span>
+                  <span className="mono text-xs font-medium text-[#111111]">
                     {mitigations.minIntentProb.toFixed(2)}
                   </span>
                 </div>
@@ -826,218 +802,221 @@ export function LiveStudioView({
                       minIntentProb: Number(e.target.value),
                     })
                   }
-                  className="w-full accent-blue-700"
+                  className="custom-slider"
                 />
-              </label>
+              </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Right Column: 3-Stage Pipeline Trace + Shopify Catalog Matches (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          <div className="bg-white border border-neutral-200 rounded-xl divide-y divide-neutral-200">
-            <div className="p-4 flex items-center justify-between">
-              <div>
-                <h2 className="text-sm font-semibold text-neutral-900">
-                  Multimodal Execution Trace
-                </h2>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  {latestTrace
-                    ? `${latestTrace.mode === 'gated' ? 'Element 119 Pipeline' : 'Ungated Baseline'} · Total ${latestTrace.totalLatencyMs}ms`
-                    : 'Click Analyze Frame or Start Loop to run live'}
-                </p>
-              </div>
-              {latestTrace && (
-                <span
-                  className={`inline-flex items-center gap-1 text-xs font-medium ${
-                    latestTrace.status === 'matched'
-                      ? 'text-emerald-700'
-                      : latestTrace.status === 'held_by_gate'
-                        ? 'text-amber-700'
-                        : 'text-neutral-600'
-                  }`}
-                >
-                  {latestTrace.status === 'matched' ? (
-                    <CheckCircle2 className="w-4 h-4" />
-                  ) : (
-                    <ShieldAlert className="w-4 h-4" />
-                  )}
-                  <span>
-                    {latestTrace.status === 'matched'
-                      ? 'Matched'
-                      : latestTrace.status === 'held_by_gate'
-                        ? 'Held by Gate'
-                        : 'No Matches'}
-                  </span>
-                </span>
-              )}
-            </div>
-
-            {!latestTrace ? (
-              <div className="p-8 text-center space-y-2">
-                <Sparkles className="w-8 h-8 text-neutral-300 mx-auto" />
-                <p className="text-sm font-medium text-neutral-900">
-                  Ready for live multimodal analysis
-                </p>
-                <p className="text-xs text-neutral-500 max-w-sm mx-auto leading-relaxed">
-                  {sourceMode === 'scenario'
-                    ? scenario.whatTextLoses
-                    : 'Point your camera at a room or product and ask what fits the space.'}
-                </p>
-              </div>
-            ) : (
-              <>
-                {/* Stage 1: Hydrogen */}
-                <div className="p-4 space-y-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-neutral-900">
-                      01. Gemini 4 Hydrogen · Stream Triage
-                    </span>
-                    <span className="font-mono text-neutral-500 tabular-nums">
-                      {latestTrace.hydrogen.latencyMs}ms
-                    </span>
-                  </div>
-                  <p className="text-xs text-neutral-600 leading-relaxed">
-                    <strong className="font-medium text-neutral-800">Cues:</strong>{' '}
-                    {latestTrace.hydrogen.visualObjects.slice(0, 5).join(', ')}
-                    {latestTrace.hydrogen.materialsAndFinishes.length > 0 &&
-                      ` (${latestTrace.hydrogen.materialsAndFinishes.slice(0, 3).join(', ')})`}
-                  </p>
-                  <p className="text-xs text-neutral-600">
-                    <strong className="font-medium text-neutral-800">Lighting &amp; Blur:</strong>{' '}
-                    {latestTrace.hydrogen.lightingTone} · {latestTrace.hydrogen.blurOrOcclusionObserved}
-                  </p>
-                  <p className="text-xs text-neutral-600">
-                    <strong className="font-medium text-neutral-800">Audio:</strong> “
-                    {latestTrace.hydrogen.spokenTranscript}” ·{' '}
-                    {latestTrace.hydrogen.acousticNoiseAssessment}
-                  </p>
-                </div>
-
-                {/* Stage 2: Decisions API */}
-                {latestTrace.decisionGate && (
-                  <div className="p-4 space-y-3">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-neutral-900">
-                        02. Decisions API (gemini-decision-1) · 0 Output Tokens
-                      </span>
-                      <span className="font-mono text-neutral-500 tabular-nums">
-                        {latestTrace.decisionGate.gateLatencyMs}ms
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3 text-xs">
-                      <div>
-                        <span className="text-neutral-500 block">Frame Usable</span>
-                        <span className="font-mono font-semibold text-neutral-900 tabular-nums">
-                          {(latestTrace.decisionGate.frameUsableProb * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-500 block">Intent Confirmed</span>
-                        <span className="font-mono font-semibold text-neutral-900 tabular-nums">
-                          {(latestTrace.decisionGate.intentConfirmedProb * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-neutral-500 block">Clutter Index</span>
-                        <span className="font-mono font-semibold text-neutral-900 tabular-nums">
-                          {(latestTrace.decisionGate.clutterScoreNormalized * 100).toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="text-xs text-neutral-600">
-                      Route choice:{' '}
-                      <span className="font-mono font-medium text-neutral-900">
-                        {latestTrace.decisionGate.routeChoice}
-                      </span>
-                      {latestTrace.decisionGate.holdReason && (
-                        <p className="mt-1 text-amber-800 font-medium">
-                          {latestTrace.decisionGate.holdReason}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* Stage 3: Neon */}
-                {latestTrace.neon && (
-                  <div className="p-4 space-y-2">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-neutral-900">
-                        03. Gemini 4 Neon · Spatial-Acoustic Synthesis
-                      </span>
-                      <span className="font-mono text-neutral-500 tabular-nums">
-                        {latestTrace.neon.latencyMs}ms
-                      </span>
-                    </div>
-                    <p className="text-xs text-neutral-700 leading-relaxed">
-                      <strong className="font-medium text-neutral-900">
-                        Lost in Text, Found in Raw Media:
-                      </strong>{' '}
-                      {latestTrace.neon.whatRawMediaRevealed}
-                    </p>
-                    <p className="text-xs text-neutral-600">
-                      <strong className="font-medium text-neutral-800">Shopify Queries:</strong>{' '}
-                      <span className="font-mono text-blue-800">
-                        {latestTrace.neon.searchQueries.join(' | ')}
-                      </span>
-                    </p>
-                  </div>
-                )}
-              </>
+      {/* RIGHT SIDE: 5 columns (Insights & Commerce) */}
+      <section className="col-span-12 lg:col-span-5 flex flex-col gap-8">
+        {/* F.1 Inference Pipeline */}
+        <div className="bg-white border border-[#1e1e1e]/10 p-6 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h3 className="clash-display text-xs font-bold uppercase tracking-widest text-[#838282]">
+              Inference Pipeline
+            </h3>
+            {latestTrace && (
+              <span className="mono text-[10px] text-[#838282]">
+                TOTAL {latestTrace.totalLatencyMs}MS
+              </span>
             )}
           </div>
 
-          {/* Live Shopify Matched Products */}
-          {latestTrace && latestTrace.products.length > 0 && (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-neutral-900">
-                  Live Shopify Catalog Matches
-                </h2>
-                <span className="font-mono text-xs text-neutral-500 tabular-nums">
-                  {latestTrace.products.length} items · MCP {latestTrace.shopifyLatencyMs}ms
-                </span>
-              </div>
+          <div className="flex flex-col gap-4">
+            <div className="pipeline-node flex items-center justify-between">
+              <span className="text-[11px] uppercase font-bold text-[#111111]">
+                01. Stream Triage · Hydrogen
+              </span>
+              <span
+                className={`text-[10px] mono ${
+                  isAnalyzing
+                    ? 'text-[#0052cc]'
+                    : latestTrace
+                      ? 'text-green-700'
+                      : 'text-[#838282]'
+                }`}
+              >
+                {isAnalyzing
+                  ? 'SCANNING...'
+                  : latestTrace
+                    ? `ACTIVE · ${latestTrace.hydrogen.latencyMs}MS`
+                    : 'IDLE'}
+              </span>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {latestTrace.products.slice(0, 4).map((product) => (
-                  <ProductCard key={product.id} product={product} onAddToBag={onAddToBag} />
-                ))}
-              </div>
+            <div className="pipeline-node flex items-center justify-between">
+              <span className="text-[11px] uppercase font-bold text-[#111111]">
+                02. Probability Gate · Decisions
+              </span>
+              <span
+                className={`text-[10px] mono font-bold ${
+                  latestTrace?.decisionGate
+                    ? latestTrace.decisionGate.passed
+                      ? 'text-[#111111]'
+                      : 'text-amber-700'
+                    : 'text-[#838282]'
+                }`}
+              >
+                {latestTrace?.mode === 'baseline'
+                  ? 'BYPASSED'
+                  : latestTrace?.decisionGate
+                    ? `${latestTrace.decisionGate.passed ? 'PASS' : 'HELD'} · P=${latestTrace.decisionGate.frameUsableProb.toFixed(2)}`
+                    : '0 TOKENS'}
+              </span>
+            </div>
+
+            <div className="pipeline-node flex items-center justify-between">
+              <span className="text-[11px] uppercase font-bold text-[#111111]">
+                03. Spatial Synthesis · Neon
+              </span>
+              <span
+                className={`text-[10px] mono ${
+                  isAnalyzing
+                    ? 'text-[#0052cc]'
+                    : latestTrace?.neon
+                      ? 'text-[#0052cc]'
+                      : 'text-[#838282]'
+                }`}
+              >
+                {isAnalyzing
+                  ? 'RESOLVING...'
+                  : latestTrace?.neon
+                    ? `MATCHED · ${latestTrace.neon.latencyMs}MS`
+                    : latestTrace?.status === 'held_by_gate'
+                      ? 'SKIPPED'
+                      : 'STANDBY'}
+              </span>
+            </div>
+          </div>
+
+          {latestTrace ? (
+            <div className="pt-4 mt-1 border-t border-[#1e1e1e]/10 space-y-2 text-xs text-[#111111]">
+              <p className="text-[11px] leading-relaxed">
+                <span className="font-bold uppercase text-[#838282] mr-1.5">Cues:</span>
+                {latestTrace.hydrogen.visualObjects.slice(0, 5).join(', ')}
+                {latestTrace.hydrogen.materialsAndFinishes.length > 0 &&
+                  ` (${latestTrace.hydrogen.materialsAndFinishes.slice(0, 3).join(', ')})`}
+              </p>
+              <p className="text-[11px] text-[#838282]">
+                <span className="font-bold uppercase mr-1.5">Optics:</span>
+                {latestTrace.hydrogen.lightingTone} · {latestTrace.hydrogen.blurOrOcclusionObserved}
+              </p>
+              {latestTrace.decisionGate?.holdReason && (
+                <p className="text-[11px] font-bold text-amber-700">
+                  {latestTrace.decisionGate.holdReason}
+                </p>
+              )}
+              {latestTrace.neon && (
+                <p className="text-[11px] leading-relaxed">
+                  <span className="font-bold uppercase text-[#0052cc] mr-1.5">
+                    Raw Media Delta:
+                  </span>
+                  {latestTrace.neon.whatRawMediaRevealed}
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="pt-4 mt-1 border-t border-[#1e1e1e]/10 text-[11px] text-[#838282] leading-relaxed">
+              {sourceMode === 'scenario'
+                ? scenario.whatTextLoses
+                : 'Point your camera at a space or object and click Analyze Frame or toggle Loop.'}
             </div>
           )}
+        </div>
 
-          {/* Compact Trace History */}
-          {traceHistory.length > 1 && (
-            <div className="bg-white border border-neutral-200 rounded-xl p-4 space-y-2">
-              <h3 className="text-xs font-semibold text-neutral-900">Recent Frame Decisions</h3>
-              <div className="divide-y divide-neutral-100">
-                {traceHistory.slice(0, 5).map((item) => (
+        {/* F.2 Shopify Matches (2-Column Grid) */}
+        <div className="flex flex-col gap-4">
+          <div className="flex justify-between items-end border-b border-[#1e1e1e]/10 pb-2">
+            <h3 className="clash-display text-lg font-bold text-[#111111]">Shopify Matches</h3>
+            <span className="text-[10px] font-bold uppercase text-[#838282]">
+              {latestTrace?.products?.length
+                ? `${latestTrace.products.length} Items · ${latestTrace.shopifyLatencyMs}ms`
+                : 'Ranked by Visual Fit'}
+            </span>
+          </div>
+
+          {latestTrace && latestTrace.products.length > 0 ? (
+            <div className="grid grid-cols-2 gap-4">
+              {latestTrace.products.slice(0, 4).map((product) => (
+                <ProductCard key={product.id} product={product} onAddToBag={onAddToBag} />
+              ))}
+            </div>
+          ) : (
+            <div className="bg-white border border-[#1e1e1e]/10 p-6 text-center">
+              <p className="text-[11px] font-bold uppercase text-[#111111]">
+                {latestTrace?.status === 'held_by_gate'
+                  ? 'Search Held by Decisions API'
+                  : 'Awaiting Frame Analysis'}
+              </p>
+              <p className="text-[11px] text-[#838282] mt-1">
+                {latestTrace?.status === 'held_by_gate'
+                  ? 'Degraded frame or unconfirmed intent blocked upstream to prevent false triggers.'
+                  : 'Click Analyze Frame or toggle Loop to query Shopify Global Catalog MCP.'}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* F.3 Recent Stream Events (Decision History) */}
+        <div className="flex flex-col gap-4">
+          <h3 className="clash-display text-xs font-bold uppercase tracking-widest text-[#838282]">
+            Recent Stream Events
+          </h3>
+
+          <div className="flex flex-col border border-[#1e1e1e]/10 divide-y divide-[#1e1e1e]/10 bg-white">
+            {traceHistory.length === 0 ? (
+              <div className="p-4 text-[11px] text-[#838282]">
+                No frames analyzed yet in this session.
+              </div>
+            ) : (
+              traceHistory.slice(0, 5).map((item) => {
+                const isHeld = item.status === 'held_by_gate';
+                return (
                   <button
                     key={item.id}
                     type="button"
                     onClick={() => setLatestTrace(item)}
-                    className="w-full py-2 flex items-center justify-between gap-2 text-left text-xs hover:bg-neutral-50 px-1 rounded cursor-pointer"
+                    className="p-3 flex justify-between items-center gap-3 hover:bg-[#f9f9f9] transition-colors cursor-pointer text-left"
                   >
-                    <span className="truncate text-neutral-800 font-medium">
-                      {item.mode === 'baseline' ? 'Baseline' : 'Gated'} ·{' '}
-                      {item.status === 'held_by_gate'
-                        ? item.decisionGate?.routeChoice
-                        : item.products[0]?.title || 'No match'}
-                    </span>
-                    <span className="font-mono text-neutral-500 tabular-nums shrink-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={item.thumbnailDataUrl}
+                        alt={item.scenarioLabel}
+                        className="w-8 h-6 object-cover bg-[#d9d9d9] shrink-0"
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-[10px] font-bold uppercase text-[#111111]">
+                          {isHeld
+                            ? 'Motion / Noise Gated'
+                            : item.mode === 'baseline'
+                              ? 'Baseline Fired'
+                              : 'Intent Matched'}
+                        </span>
+                        <span
+                          className={`text-[9px] truncate ${
+                            isHeld ? 'text-red-500' : 'text-[#838282]'
+                          }`}
+                        >
+                          {isHeld
+                            ? item.decisionGate?.routeChoice
+                            : item.products[0]?.title || item.hydrogen.spokenTranscript}
+                        </span>
+                      </div>
+                    </div>
+
+                    <span className="mono text-[9px] text-[#838282] shrink-0">
                       {item.totalLatencyMs}ms
                     </span>
                   </button>
-                ))}
-              </div>
-            </div>
-          )}
+                );
+              })
+            )}
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

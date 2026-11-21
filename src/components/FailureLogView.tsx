@@ -62,15 +62,15 @@ export function FailureLogView({
   const combined = [...failures, ...REFERENCE_BREAKPOINTS];
 
   return (
-    <div className="max-w-[1440px] mx-auto px-6 py-8 space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-neutral-200">
+    <div className="max-w-[1920px] mx-auto p-6 lg:p-8 space-y-8">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 pb-6 border-b border-[#1e1e1e]/10">
         <div>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-neutral-950 text-balance">
-            Failure Log &amp; Architectural Mitigations
+          <h1 className="clash-display text-3xl font-bold uppercase text-[#111111]">
+            Failure Log &amp; Mitigations
           </h1>
-          <p className="text-sm text-neutral-600 mt-1.5 max-w-2xl leading-relaxed">
-            Live captured breaking points from Live Studio and Benchmark sweeps alongside the
-            architectural changes built to push past each failure threshold.
+          <p className="text-xs text-[#838282] mt-2 max-w-2xl leading-relaxed">
+            Captured breaking points from Live Studio and Stress Benchmark runs paired with the
+            architectural safeguards built to push past each threshold.
           </p>
         </div>
 
@@ -78,74 +78,77 @@ export function FailureLogView({
           <button
             type="button"
             onClick={onClearFailures}
-            className="px-4 py-2 text-xs font-medium text-neutral-700 bg-white border border-neutral-200 hover:bg-neutral-50 rounded-lg cursor-pointer self-start sm:self-auto"
+            className="px-4 py-2 text-[11px] font-bold uppercase text-[#111111] bg-white border border-[#1e1e1e] btn-invert cursor-pointer self-start sm:self-auto"
           >
             Clear Session Captures ({failures.length})
           </button>
         )}
       </div>
 
-      {/* Active Safeguard Controls */}
-      <div className="bg-white border border-neutral-200 rounded-xl p-5 grid grid-cols-1 md:grid-cols-3 gap-6">
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={mitigations.blurGate}
-            onChange={(e) =>
-              onChangeMitigations({ ...mitigations, blurGate: e.target.checked })
-            }
-            className="mt-1 accent-blue-700"
-          />
+      {/* Active Safeguard Controls with Custom Swiss Checkboxes */}
+      <div className="bg-white border border-[#1e1e1e]/10 p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+        <button
+          type="button"
+          onClick={() =>
+            onChangeMitigations({ ...mitigations, blurGate: !mitigations.blurGate })
+          }
+          className="flex items-start gap-3 text-left cursor-pointer group"
+        >
+          <div className="w-3.5 h-3.5 mt-0.5 border border-black flex items-center justify-center shrink-0">
+            {mitigations.blurGate && <div className="w-2 h-2 bg-black" />}
+          </div>
           <div>
-            <span className="text-sm font-semibold text-neutral-900 block">
+            <span className="text-xs font-bold uppercase text-[#111111] group-hover:text-[#0052cc] block">
               Decisions API Zero-Token Gate
             </span>
-            <span className="text-xs text-neutral-500">
+            <span className="text-[11px] text-[#838282] mt-0.5 block">
               Blocks blurry frames and unconfirmed speech before Neon or Shopify runs.
             </span>
           </div>
-        </label>
+        </button>
 
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={mitigations.frameDedup}
-            onChange={(e) =>
-              onChangeMitigations({ ...mitigations, frameDedup: e.target.checked })
-            }
-            className="mt-1 accent-blue-700"
-          />
+        <button
+          type="button"
+          onClick={() =>
+            onChangeMitigations({ ...mitigations, frameDedup: !mitigations.frameDedup })
+          }
+          className="flex items-start gap-3 text-left cursor-pointer group"
+        >
+          <div className="w-3.5 h-3.5 mt-0.5 border border-black flex items-center justify-center shrink-0">
+            {mitigations.frameDedup && <div className="w-2 h-2 bg-black" />}
+          </div>
           <div>
-            <span className="text-sm font-semibold text-neutral-900 block">
+            <span className="text-xs font-bold uppercase text-[#111111] group-hover:text-[#0052cc] block">
               Luma Frame-Diff Deduplication
             </span>
-            <span className="text-xs text-neutral-500">
+            <span className="text-[11px] text-[#838282] mt-0.5 block">
               Drops redundant frames during static camera holds in high-FPS loops.
             </span>
           </div>
-        </label>
+        </button>
 
-        <label className="flex items-start gap-3 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={mitigations.confidenceHysteresis}
-            onChange={(e) =>
-              onChangeMitigations({
-                ...mitigations,
-                confidenceHysteresis: e.target.checked,
-              })
-            }
-            className="mt-1 accent-blue-700"
-          />
+        <button
+          type="button"
+          onClick={() =>
+            onChangeMitigations({
+              ...mitigations,
+              confidenceHysteresis: !mitigations.confidenceHysteresis,
+            })
+          }
+          className="flex items-start gap-3 text-left cursor-pointer group"
+        >
+          <div className="w-3.5 h-3.5 mt-0.5 border border-black flex items-center justify-center shrink-0">
+            {mitigations.confidenceHysteresis && <div className="w-2 h-2 bg-black" />}
+          </div>
           <div>
-            <span className="text-sm font-semibold text-neutral-900 block">
+            <span className="text-xs font-bold uppercase text-[#111111] group-hover:text-[#0052cc] block">
               Rubric Fit Sorting
             </span>
-            <span className="text-xs text-neutral-500">
+            <span className="text-[11px] text-[#838282] mt-0.5 block">
               Batch-scores all Shopify candidates via Decisions API against the raw frame.
             </span>
           </div>
-        </label>
+        </button>
       </div>
 
       {/* Failure Snapshot List */}
@@ -155,9 +158,9 @@ export function FailureLogView({
           return (
             <article
               key={item.id}
-              className="bg-white border border-neutral-200 rounded-xl p-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center"
+              className="bg-white border border-[#1e1e1e]/10 p-5 grid grid-cols-1 lg:grid-cols-12 gap-6 items-center"
             >
-              <div className="lg:col-span-3 aspect-[16/9] rounded-lg overflow-hidden bg-neutral-100 border border-neutral-200">
+              <div className="lg:col-span-3 aspect-[16/9] overflow-hidden bg-[#f2f2f2] border border-[#1e1e1e]/10">
                 <img
                   src={item.thumbnailDataUrl}
                   alt={item.triggerLabel}
@@ -167,40 +170,40 @@ export function FailureLogView({
               </div>
 
               <div className="lg:col-span-6 space-y-2">
-                <div className="text-xs text-neutral-500">
-                  <span className="font-medium text-neutral-800">{item.dimension}</span>
+                <div className="text-[10px] text-[#838282] uppercase">
+                  <span className="font-bold text-[#111111]">{item.dimension}</span>
                   <span aria-hidden="true"> · </span>
-                  <span className="font-mono">{item.triggerLabel}</span>
+                  <span className="mono">{item.triggerLabel}</span>
                   <span aria-hidden="true"> · </span>
-                  <span>{item.timestamp}</span>
+                  <span className="mono">{item.timestamp}</span>
                 </div>
 
-                <p className="text-sm text-neutral-900 leading-relaxed">
-                  <strong className="font-semibold">Failure Mode:</strong> {item.observedFailure}
+                <p className="text-xs text-[#111111] leading-relaxed">
+                  <strong className="uppercase">Failure Mode:</strong> {item.observedFailure}
                 </p>
 
-                <p className="text-xs text-neutral-600 leading-relaxed flex items-start gap-1.5">
-                  <Wrench className="w-3.5 h-3.5 text-blue-700 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-[#838282] leading-relaxed flex items-start gap-1.5">
+                  <Wrench className="w-3.5 h-3.5 text-[#0052cc] shrink-0 mt-0.5" />
                   <span>
-                    <strong className="font-medium text-neutral-800">Fix Applied:</strong>{' '}
+                    <strong className="uppercase text-[#111111]">Fix Applied:</strong>{' '}
                     {item.architecturalFix}
                   </span>
                 </p>
               </div>
 
-              <div className="lg:col-span-3 lg:border-l lg:border-neutral-200 lg:pl-6 space-y-2 text-xs">
+              <div className="lg:col-span-3 lg:border-l lg:border-[#1e1e1e]/10 lg:pl-6 space-y-2 text-[11px]">
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-neutral-500">Ungated Baseline</span>
-                  <span className="text-amber-700 font-medium inline-flex items-center gap-1">
+                  <span className="text-[#838282] uppercase text-[10px] font-bold">Baseline</span>
+                  <span className="text-amber-700 font-bold inline-flex items-center gap-1">
                     <ShieldAlert className="w-3.5 h-3.5" />
                     <span>{item.baselineStatus}</span>
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-neutral-500">With Mitigation</span>
+                  <span className="text-[#838282] uppercase text-[10px] font-bold">Mitigated</span>
                   <span
-                    className={`font-medium inline-flex items-center gap-1 ${
-                      mitigationEnabled ? 'text-emerald-700' : 'text-red-700'
+                    className={`font-bold inline-flex items-center gap-1 ${
+                      mitigationEnabled ? 'text-green-700' : 'text-red-700'
                     }`}
                   >
                     <CheckCircle2 className="w-3.5 h-3.5" />

@@ -1,4 +1,4 @@
-import { ExternalLink, Package, Plus } from 'lucide-react';
+import { ExternalLink, Package } from 'lucide-react';
 import { CatalogProduct } from '../types';
 
 interface ProductCardProps {
@@ -13,37 +13,44 @@ export function ProductCard({ product, onAddToBag }: ProductCardProps) {
   }).format((product.priceAmountCents || 0) / 100);
 
   return (
-    <article className="bg-white border border-neutral-200 rounded-xl overflow-hidden flex flex-col transition-transform duration-150 hover:-translate-y-0.5">
-      <div className="aspect-[4/3] bg-neutral-100 border-b border-neutral-200 overflow-hidden flex items-center justify-center">
+    <article className="group flex flex-col">
+      <div className="aspect-[4/3] bg-gradient-to-tr from-[#d1d1d1] to-[#f2f2f2] mb-3 relative overflow-hidden border border-[#1e1e1e]/10">
         {product.imageUrl ? (
           <img
             src={product.imageUrl}
             alt={product.title}
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+            className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
           />
         ) : (
-          <div className="flex flex-col items-center gap-1.5 text-neutral-400 px-4 text-center">
-            <Package className="w-7 h-7" />
-            <span className="text-xs font-medium text-neutral-500 line-clamp-1">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-[#838282] px-3 text-center">
+            <Package className="w-6 h-6 opacity-40" />
+            <span className="text-[10px] uppercase font-bold tracking-wider truncate max-w-full">
               {product.merchantName}
             </span>
           </div>
         )}
+
+        {typeof product.fitScoreNormalized === 'number' && (
+          <div className="absolute top-2 right-2 bg-white px-2 py-0.5 text-[9px] font-bold uppercase mono text-[#111111] border border-[#1e1e1e]/10">
+            {Math.round(product.fitScoreNormalized * 100)}% FIT
+          </div>
+        )}
       </div>
 
-      <div className="p-4 flex-1 flex flex-col justify-between gap-3">
-        <div>
-          <div className="text-xs text-neutral-500 truncate">
+      <div className="flex flex-col gap-1 flex-1 justify-between">
+        <div className="space-y-1">
+          <div className="flex justify-between items-baseline gap-2">
+            <h3 className="text-[11px] uppercase font-bold text-[#111111] truncate">
+              {product.title}
+            </h3>
+            <span className="mono text-[11px] font-bold text-[#111111] shrink-0">
+              {formattedPrice}
+            </span>
+          </div>
+
+          <div className="text-[10px] text-[#838282] truncate">
             <span>{product.merchantName}</span>
-            {typeof product.fitScoreNormalized === 'number' && (
-              <>
-                <span aria-hidden="true"> · </span>
-                <span className="font-mono font-medium text-neutral-800 tabular-nums">
-                  {Math.round(product.fitScoreNormalized * 100)}% fit
-                </span>
-              </>
-            )}
             {product.fitLabel && (
               <>
                 <span aria-hidden="true"> · </span>
@@ -51,44 +58,35 @@ export function ProductCard({ product, onAddToBag }: ProductCardProps) {
               </>
             )}
           </div>
-
-          <h3 className="text-sm font-semibold text-neutral-900 mt-1 line-clamp-2 leading-snug">
-            {product.title}
-          </h3>
-
-          {product.descriptionSnippet && (
-            <p className="text-xs text-neutral-500 mt-1.5 line-clamp-2 leading-relaxed">
-              {product.descriptionSnippet}
-            </p>
-          )}
         </div>
 
-        <div className="pt-3 border-t border-neutral-100 flex items-center justify-between gap-2">
-          <span className="font-mono text-sm font-semibold text-neutral-900 tabular-nums">
-            {formattedPrice}
-          </span>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {product.checkoutUrl && (
-              <a
-                href={product.checkoutUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-neutral-700 hover:text-neutral-950 border border-neutral-200 hover:bg-neutral-50 rounded-lg transition-colors whitespace-nowrap"
-              >
-                <span>Buy</span>
-                <ExternalLink className="w-3 h-3" />
-              </a>
-            )}
+        <div className="flex gap-2 mt-2">
+          {product.checkoutUrl ? (
+            <a
+              href={product.checkoutUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 inline-flex items-center justify-center gap-1 bg-[#0052cc] text-white py-2 text-[10px] font-bold uppercase hover:opacity-90 transition-opacity"
+            >
+              <span>Buy</span>
+              <ExternalLink className="w-2.5 h-2.5" />
+            </a>
+          ) : (
             <button
               type="button"
               onClick={() => onAddToBag(product)}
-              className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors whitespace-nowrap cursor-pointer"
+              className="flex-1 bg-[#0052cc] text-white py-2 text-[10px] font-bold uppercase hover:opacity-90 transition-opacity cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
+              Buy
             </button>
-          </div>
+          )}
+          <button
+            type="button"
+            onClick={() => onAddToBag(product)}
+            className="flex-1 border border-[#111111] py-2 text-[10px] font-bold uppercase btn-invert cursor-pointer"
+          >
+            Add
+          </button>
         </div>
       </div>
     </article>
