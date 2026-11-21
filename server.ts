@@ -271,6 +271,48 @@ async function searchShopifyMcp(
   };
 }
 
+async function runFastAudioTranscribe(
+  ai: GoogleGenAI,
+  audioBase64: string,
+  audioMimeType?: string,
+): Promise<{ transcript: string; noiseNote: string; latencyMs: number }> {
+  const t0 = Date.now();
+  const resp = await ai.models.generateContent({
+    model: 'gemini-4-hydrogen',
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            mimeType: audioMimeType || 'audio/wav',
+            data: stripDataUrlPrefix(audioBase64),
+          },
+        },
+        {
+          text: 'Transcribe all spoken words verbatim from this audio clip. If no intelligible speech is present, return an empty string for transcript and describe the sound in noiseNote.',
+        },
+      ] as never,
+    },
+    config: {
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      responseMimeType: 'application/json',
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          transcript: { type: Type.STRING },
+          noiseNote: { type: Type.STRING },
+        },
+        required: ['transcript', 'noiseNote'],
+      },
+    },
+  });
+  const parsed = JSON.parse((resp.text || '{}').trim());
+  return {
+    transcript: (parsed.transcript || '').trim(),
+    noiseNote: (parsed.noiseNote || 'Audio analyzed').trim(),
+    latencyMs: Date.now() - t0,
+  };
+}
+
 async function runHydrogenPerception(
   ai: GoogleGenAI,
   imageBase64: string,
@@ -378,7 +420,7 @@ async function runDecisionGate(
       type: 'image',
       data: stripDataUrlPrefix(imageBase64),
       mime_type: imageMimeType || 'image/jpeg',
-      resolution: 'low',
+      resolution: 'medium',
     },
   ];
 
@@ -754,6 +796,7 @@ async function startServer() {
         audioBase64,
         audioMimeType = 'audio/wav',
         spokenTranscriptHint,
+        hasRealAudio = false,
         mode = 'gated',
         mitigations = {
           blurGate: true,
@@ -781,6 +824,26 @@ async function startServer() {
 
       const { ai, decisionsAi } = getGeminiClients();
 
+      let effectiveTranscriptHint = (spokenTranscriptHint || '').trim();
+      let preTranscribedAudio: { transcript: string; noiseNote: string; latencyMs: number } | null =
+        null;
+
+      // Always transcribe real video/mic audio when no manual prompt was supplied
+      if (hasRealAudio && audioBase64 && !effectiveTranscriptHint) {
+        sendEvent('stage', { stage: 'transcribe', status: 'running' });
+        preTranscribedAudio = await runFastAudioTranscribe(ai, audioBase64, audioMimeType);
+        if (preTranscribedAudio.transcript) {
+          effectiveTranscriptHint = preTranscribedAudio.transcript;
+        }
+        sendEvent('stage', {
+          stage: 'transcribe',
+          status: 'done',
+          transcript: effectiveTranscriptHint,
+          noiseNote: preTranscribedAudio.noiseNote,
+          latencyMs: preTranscribedAudio.latencyMs,
+        });
+      }
+
       if (mode === 'baseline') {
         sendEvent('stage', { stage: 'hydrogen', status: 'running' });
         const hydrogen = await runHydrogenPerception(
@@ -789,7 +852,7 @@ async function startServer() {
           imageMimeType,
           audioBase64,
           audioMimeType,
-          spokenTranscriptHint,
+          effectiveTranscriptHint || undefined,
         );
         sendEvent('stage', { stage: 'hydrogen', status: 'done', hydrogen });
         sendEvent('stage', { stage: 'shopify', status: 'running' });
@@ -797,7 +860,7 @@ async function startServer() {
         const query =
           hydrogen.quickSearchQuery ||
           hydrogen.visualObjects[0] ||
-          spokenTranscriptHint ||
+          effectiveTranscriptHint ||
           'home decor';
         const shopify = await searchShopifyMcp(query, {
           limit: 4,
@@ -836,7 +899,7 @@ async function startServer() {
         imageMimeType,
         audioBase64,
         audioMimeType,
-        spokenTranscriptHint,
+        effectiveTranscriptHint || undefined,
         mitigations,
       );
       sendEvent('stage', { stage: 'gate', status: 'done', decisionGate });
@@ -851,18 +914,19 @@ async function startServer() {
           hydrogen: {
             visualObjects: [],
             materialsAndFinishes: [],
-            lightingTone: decisionGate.clutterLabel,
+            lightingTone: `Scene assessment: ${decisionGate.clutterLabel}`,
             blurOrOcclusionObserved:
               decisionGate.routeChoice === 'hold_blurry_frame'
-                ? `Severe blur / low light (usable=${decisionGate.frameUsableProb.toFixed(2)})`
-                : `Gate held (${decisionGate.routeChoice})`,
-            spokenTranscript: spokenTranscriptHint || '',
+                ? `Frame usable score=${decisionGate.frameUsableProb.toFixed(2)} (blur/darkness check)`
+                : `Gate action: ${decisionGate.routeChoice}`,
+            spokenTranscript: effectiveTranscriptHint,
             acousticNoiseAssessment:
-              decisionGate.routeChoice === 'hold_noisy_audio'
-                ? `Unconfirmed speech intent (intent=${decisionGate.intentConfirmedProb.toFixed(2)})`
-                : 'Gated upstream',
+              preTranscribedAudio?.noiseNote ||
+              (decisionGate.routeChoice === 'hold_noisy_audio'
+                ? `Audio unclear or no shopping intent detected (intent=${decisionGate.intentConfirmedProb.toFixed(2)})`
+                : 'Gated upstream'),
             quickSearchQuery: '',
-            latencyMs: 0,
+            latencyMs: preTranscribedAudio?.latencyMs ?? 0,
           },
           decisionGate,
           shopifyLatencyMs: 0,
@@ -889,7 +953,7 @@ async function startServer() {
           imageMimeType,
           audioBase64,
           audioMimeType,
-          spokenTranscriptHint,
+          effectiveTranscriptHint || undefined,
         ).then((h) => {
           sendEvent('stage', { stage: 'hydrogen', status: 'done', hydrogen: h });
           return h;
@@ -900,7 +964,7 @@ async function startServer() {
           imageMimeType,
           audioBase64,
           audioMimeType,
-          spokenTranscriptHint,
+          effectiveTranscriptHint || undefined,
         ).then((n) => {
           sendEvent('stage', { stage: 'neon', status: 'done', neon: n });
           return n;

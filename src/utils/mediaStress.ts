@@ -168,3 +168,62 @@ export function synthesizeStressAudioWav(
 
   return encodeFloat32ToWavBase64(samples, sampleRate);
 }
+
+/**
+ * Extracts a clamped mono 16kHz WAV window centered around the video playhead
+ * from a decoded uploaded-video AudioBuffer.
+ */
+export function extractAudioWindowWavBase64(
+  buffer: AudioBuffer,
+  centerTimeSec: number,
+  windowSec = 8,
+): { wavBase64: string; rmsLevel: number; startSec: number; endSec: number } {
+  const duration = buffer.duration;
+  const clampedWin = Math.min(duration, Math.max(0.5, windowSec));
+  const startSec = Math.max(0, Math.min(duration - clampedWin, centerTimeSec - clampedWin / 2));
+  const endSec = Math.min(duration, startSec + clampedWin);
+
+  const srcRate = buffer.sampleRate;
+  const dstRate = 16000;
+  const startSample = Math.max(0, Math.floor(startSec * srcRate));
+  const endSample = Math.min(buffer.length, Math.ceil(endSec * srcRate));
+  const srcCount = Math.max(1, endSample - startSample);
+  const dstCount = Math.max(1, Math.round((srcCount / srcRate) * dstRate));
+
+  const channels: Float32Array[] = [];
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    channels.push(buffer.getChannelData(c));
+  }
+  const chCount = Math.max(1, channels.length);
+
+  const out = new Float32Array(dstCount);
+  const ratio = srcCount / dstCount;
+  let sumSq = 0;
+
+  for (let i = 0; i < dstCount; i++) {
+    const srcPos = startSample + i * ratio;
+    const idx0 = Math.min(buffer.length - 1, Math.floor(srcPos));
+    const idx1 = Math.min(buffer.length - 1, idx0 + 1);
+    const frac = srcPos - idx0;
+
+    let mix0 = 0;
+    let mix1 = 0;
+    for (let c = 0; c < chCount; c++) {
+      mix0 += channels[c][idx0];
+      mix1 += channels[c][idx1];
+    }
+    mix0 /= chCount;
+    mix1 /= chCount;
+    const sample = mix0 + (mix1 - mix0) * frac;
+    out[i] = sample;
+    sumSq += sample * sample;
+  }
+
+  return {
+    wavBase64: encodeFloat32ToWavBase64(out, dstRate),
+    rmsLevel: Math.sqrt(sumSq / dstCount),
+    startSec,
+    endSec,
+  };
+}
+

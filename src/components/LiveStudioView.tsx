@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AlertTriangle, Loader2, Mic, MicOff, Zap } from 'lucide-react';
+import {
+  AlertTriangle,
+  Loader2,
+  Mic,
+  MicOff,
+  Pause,
+  Play,
+  Volume2,
+  VolumeX,
+  Zap,
+} from 'lucide-react';
 import { SCENARIO_PRESETS } from '../data/scenarios';
 import {
   CatalogProduct,
@@ -12,6 +22,7 @@ import {
 import {
   computeFrameLumaDelta,
   encodeFloat32ToWavBase64,
+  extractAudioWindowWavBase64,
   renderStressedFrameToCanvas,
   synthesizeStressAudioWav,
 } from '../utils/mediaStress';
@@ -56,10 +67,26 @@ export function LiveStudioView({
   const [traceHistory, setTraceHistory] = useState<PipelineTrace[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
   const [showAdvancedControls, setShowAdvancedControls] = useState(false);
-  const [liveStage, setLiveStage] = useState<'idle' | 'gate' | 'synthesis' | 'shopify' | 'baseline'>('idle');
+  const [liveStage, setLiveStage] = useState<
+    'idle' | 'transcribe' | 'gate' | 'synthesis' | 'shopify' | 'baseline'
+  >('idle');
+  const [liveTranscript, setLiveTranscript] = useState<{
+    text: string;
+    noiseNote: string;
+    latencyMs: number;
+  } | null>(null);
   const [liveGate, setLiveGate] = useState<PipelineTrace['decisionGate'] | null>(null);
   const [liveHydrogen, setLiveHydrogen] = useState<PipelineTrace['hydrogen'] | null>(null);
   const [liveNeon, setLiveNeon] = useState<PipelineTrace['neon'] | null>(null);
+
+  const [uploadAudioStatus, setUploadAudioStatus] = useState<
+    'none' | 'decoding' | 'ready' | 'silent'
+  >('none');
+  const [uploadedFileName, setUploadedFileName] = useState<string>('');
+  const [uploadDurationSec, setUploadDurationSec] = useState<number>(0);
+  const [uploadCurrentSec, setUploadCurrentSec] = useState<number>(0);
+  const [uploadPlaying, setUploadPlaying] = useState<boolean>(false);
+  const [uploadMuted, setUploadMuted] = useState<boolean>(true);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -71,6 +98,10 @@ export function LiveStudioView({
   const micStreamRef = useRef<MediaStream | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const pcmBufferRef = useRef<Float32Array[]>([]);
+  const uploadedAudioBufferRef = useRef<AudioBuffer | null>(null);
+  const uploadedObjectUrlRef = useRef<string | null>(null);
+  const uploadDecodePromiseRef = useRef<Promise<'ready' | 'silent'> | null>(null);
+  const lastClockSyncRef = useRef<number>(0);
 
   const scenario =
     SCENARIO_PRESETS.find((s) => s.id === selectedScenarioId) || SCENARIO_PRESETS[0];
@@ -163,15 +194,34 @@ export function LiveStudioView({
   }, [stopCameraAndMic]);
 
   useEffect(() => {
+    return () => {
+      if (uploadedObjectUrlRef.current) {
+        URL.revokeObjectURL(uploadedObjectUrlRef.current);
+        uploadedObjectUrlRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (sourceMode === 'camera') {
       startCameraAndMic();
     } else {
       stopCameraAndMic();
+      if (sourceMode === 'upload' && videoRef.current && uploadedObjectUrlRef.current) {
+        videoRef.current.src = uploadedObjectUrlRef.current;
+        setCameraReady(true);
+      }
     }
     return () => {
       stopCameraAndMic();
     };
   }, [sourceMode, startCameraAndMic, stopCameraAndMic]);
+
+  useEffect(() => {
+    if (videoRef.current && sourceMode === 'upload') {
+      videoRef.current.muted = uploadMuted;
+    }
+  }, [uploadMuted, sourceMode]);
 
   useEffect(() => {
     let rafId = 0;
@@ -198,7 +248,26 @@ export function LiveStudioView({
           ctx?.clearRect(0, 0, canvas.width, canvas.height);
         }
       }
-      if (sourceMode !== 'camera' || !micActive) {
+      if (sourceMode === 'upload' && videoRef.current) {
+        const now = performance.now();
+        if (now - lastClockSyncRef.current > 200) {
+          lastClockSyncRef.current = now;
+          const t = videoRef.current.currentTime || 0;
+          setUploadCurrentSec(t);
+          if (uploadedAudioBufferRef.current && !videoRef.current.paused) {
+            const buf = uploadedAudioBufferRef.current;
+            const ch = buf.getChannelData(0);
+            const center = Math.floor(t * buf.sampleRate);
+            const win = Math.min(2048, ch.length);
+            const start = Math.max(0, Math.min(ch.length - win, center - Math.floor(win / 2)));
+            let sq = 0;
+            for (let i = start; i < start + win; i += 8) sq += ch[i] * ch[i];
+            setAudioLevel(Math.min(1, Math.sqrt(sq / (win / 8)) * 4.5));
+          } else {
+            setAudioLevel(uploadedAudioBufferRef.current ? 0.12 : 0.04);
+          }
+        }
+      } else if (sourceMode !== 'camera' || !micActive) {
         const syntheticLevel =
           0.14 +
           stressConfig.noiseMixLevel * 0.55 +
@@ -211,38 +280,158 @@ export function LiveStudioView({
     return () => cancelAnimationFrame(rafId);
   }, [sourceMode, stressConfig, scenario.panPattern, micActive]);
 
-  const handleVideoFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSourceModeChange = (nextMode: MediaSourceMode) => {
+    setIsStreaming(false);
+    setLiveTranscript(null);
+    setApiError(null);
+    if (
+      nextMode !== 'scenario' &&
+      SCENARIO_PRESETS.some((preset) => preset.spokenPrompt === spokenHint.trim())
+    ) {
+      setSpokenHint('');
+    }
+    setSourceMode(nextMode);
+  };
+
+  const handleVideoFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setMediaError(null);
+    setApiError(null);
+    setLiveTranscript(null);
+
+    if (SCENARIO_PRESETS.some((preset) => preset.spokenPrompt === spokenHint.trim())) {
+      setSpokenHint('');
+    }
+
+    if (uploadedObjectUrlRef.current) {
+      URL.revokeObjectURL(uploadedObjectUrlRef.current);
+    }
     const url = URL.createObjectURL(file);
+    uploadedObjectUrlRef.current = url;
+    setUploadedFileName(file.name);
+    setUploadAudioStatus('decoding');
+    setUploadDurationSec(0);
+    setUploadCurrentSec(0);
+    uploadedAudioBufferRef.current = null;
+
     if (videoRef.current) {
       videoRef.current.srcObject = null;
       videoRef.current.src = url;
       videoRef.current.loop = true;
-      videoRef.current.muted = true;
-      videoRef.current.play().catch(() => {});
+      videoRef.current.muted = uploadMuted;
+      videoRef.current
+        .play()
+        .then(() => setUploadPlaying(true))
+        .catch(() => setUploadPlaying(false));
       setCameraReady(true);
+    }
+
+    const decodeTask = (async (): Promise<'ready' | 'silent'> => {
+      try {
+        const arrayBuf = await file.arrayBuffer();
+        const DecodeCtx =
+          window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+        const ctx = new DecodeCtx();
+        try {
+          const decoded = await ctx.decodeAudioData(arrayBuf.slice(0));
+          let peak = 0;
+          for (let c = 0; c < decoded.numberOfChannels; c++) {
+            const data = decoded.getChannelData(c);
+            const step = Math.max(1, Math.floor(data.length / 4000));
+            for (let i = 0; i < data.length; i += step) {
+              const abs = Math.abs(data[i]);
+              if (abs > peak) peak = abs;
+            }
+          }
+          setUploadDurationSec(decoded.duration || 0);
+          if (decoded.duration <= 0 || peak < 0.0005) {
+            uploadedAudioBufferRef.current = null;
+            setUploadAudioStatus('silent');
+            return 'silent';
+          }
+          uploadedAudioBufferRef.current = decoded;
+          setUploadAudioStatus('ready');
+          return 'ready';
+        } finally {
+          await ctx.close().catch(() => {});
+        }
+      } catch {
+        uploadedAudioBufferRef.current = null;
+        setUploadAudioStatus('silent');
+        return 'silent';
+      }
+    })();
+
+    uploadDecodePromiseRef.current = decodeTask;
+    await decodeTask;
+  };
+
+  const toggleUploadPlayback = () => {
+    const vid = videoRef.current;
+    if (!vid || !uploadedObjectUrlRef.current) return;
+    if (vid.paused) {
+      vid
+        .play()
+        .then(() => setUploadPlaying(true))
+        .catch(() => setUploadPlaying(false));
+    } else {
+      vid.pause();
+      setUploadPlaying(false);
     }
   };
 
-  const captureCurrentAudioWavBase64 = (): string => {
-    if (sourceMode === 'camera' && micActive && pcmBufferRef.current.length > 0) {
-      const totalLen = pcmBufferRef.current.reduce((acc, buf) => acc + buf.length, 0);
-      const merged = new Float32Array(totalLen);
-      let offset = 0;
-      for (const buf of pcmBufferRef.current) {
-        merged.set(buf, offset);
-        offset += buf.length;
+  const captureCurrentAudioPayload = useCallback(async (): Promise<{
+    audioBase64?: string;
+    hasRealAudio: boolean;
+  }> => {
+    if (sourceMode === 'camera') {
+      if (micActive && pcmBufferRef.current.length > 0) {
+        const totalLen = pcmBufferRef.current.reduce((acc, buf) => acc + buf.length, 0);
+        const merged = new Float32Array(totalLen);
+        let offset = 0;
+        for (const buf of pcmBufferRef.current) {
+          merged.set(buf, offset);
+          offset += buf.length;
+        }
+        return {
+          audioBase64: encodeFloat32ToWavBase64(merged, 16000),
+          hasRealAudio: true,
+        };
       }
-      return encodeFloat32ToWavBase64(merged, 16000);
+      return { audioBase64: undefined, hasRealAudio: false };
     }
-    return synthesizeStressAudioWav(
-      0.8,
-      stressConfig.noiseMixLevel,
-      spokenHint.trim().length > 0,
-    );
-  };
+
+    if (sourceMode === 'upload') {
+      let status = uploadAudioStatus;
+      if (status === 'decoding' && uploadDecodePromiseRef.current) {
+        status = await uploadDecodePromiseRef.current;
+      }
+      if (status === 'ready' && uploadedAudioBufferRef.current) {
+        const playhead = videoRef.current?.currentTime ?? 0;
+        const { wavBase64, rmsLevel } = extractAudioWindowWavBase64(
+          uploadedAudioBufferRef.current,
+          playhead,
+          8,
+        );
+        if (rmsLevel < 0.0005) {
+          return { audioBase64: undefined, hasRealAudio: false };
+        }
+        return { audioBase64: wavBase64, hasRealAudio: true };
+      }
+      return { audioBase64: undefined, hasRealAudio: false };
+    }
+
+    return {
+      audioBase64: synthesizeStressAudioWav(
+        0.8,
+        stressConfig.noiseMixLevel,
+        spokenHint.trim().length > 0,
+      ),
+      hasRealAudio: false,
+    };
+  }, [sourceMode, micActive, uploadAudioStatus, stressConfig.noiseMixLevel, spokenHint]);
 
   const analyzeFrameNow = useCallback(
     async (isFromLoop = false) => {
@@ -264,6 +453,7 @@ export function LiveStudioView({
       inFlightRef.current = true;
       setIsAnalyzing(true);
       setApiError(null);
+      setLiveTranscript(null);
       setLiveStage(pipelineMode === 'baseline' ? 'baseline' : 'gate');
       setLiveGate(null);
       setLiveHydrogen(null);
@@ -274,7 +464,7 @@ export function LiveStudioView({
 
       try {
         const imageDataUrl = canvas.toDataURL('image/jpeg', 0.78);
-        const audioBase64 = captureCurrentAudioWavBase64();
+        const { audioBase64, hasRealAudio } = await captureCurrentAudioPayload();
 
         const res = await fetch('/api/pipeline/analyze?stream=1', {
           method: 'POST',
@@ -288,6 +478,7 @@ export function LiveStudioView({
             imageMimeType: 'image/jpeg',
             audioBase64,
             audioMimeType: 'audio/wav',
+            hasRealAudio,
             spokenTranscriptHint: spokenHint,
             mode: pipelineMode,
             mitigations,
@@ -297,7 +488,7 @@ export function LiveStudioView({
                 ? scenario.title
                 : sourceMode === 'camera'
                   ? 'Live Webcam + Mic'
-                  : 'Uploaded Video Stream',
+                  : uploadedFileName || 'Uploaded Video Stream',
             stressConfig,
           }),
         });
@@ -335,7 +526,15 @@ export function LiveStudioView({
               const parsed = JSON.parse(dataLines.join('\n'));
 
               if (eventName === 'stage') {
-                if (parsed.stage === 'gate' && parsed.status === 'running') {
+                if (parsed.stage === 'transcribe' && parsed.status === 'running') {
+                  setLiveStage('transcribe');
+                } else if (parsed.stage === 'transcribe' && parsed.status === 'done') {
+                  setLiveTranscript({
+                    text: parsed.transcript || '',
+                    noiseNote: parsed.noiseNote || '',
+                    latencyMs: parsed.latencyMs || 0,
+                  });
+                } else if (parsed.stage === 'gate' && parsed.status === 'running') {
                   setLiveStage('gate');
                 } else if (parsed.stage === 'gate' && parsed.status === 'done') {
                   setLiveGate(parsed.decisionGate);
@@ -415,6 +614,7 @@ export function LiveStudioView({
       }
     },
     [
+      captureCurrentAudioPayload,
       mitigations,
       pipelineMode,
       scenario.title,
@@ -422,6 +622,7 @@ export function LiveStudioView({
       spokenHint,
       storefrontMcpUrl,
       stressConfig,
+      uploadedFileName,
       onRecordFailure,
     ],
   );
@@ -458,7 +659,7 @@ export function LiveStudioView({
                 <button
                   key={id}
                   type="button"
-                  onClick={() => setSourceMode(id)}
+                  onClick={() => handleSourceModeChange(id)}
                   className={`px-4 py-1.5 text-xs font-bold uppercase border transition-colors whitespace-nowrap cursor-pointer ${
                     active
                       ? 'border-black bg-black text-white'
@@ -523,24 +724,52 @@ export function LiveStudioView({
         )}
 
         {sourceMode === 'upload' && (
-          <div className="p-4 bg-white border border-[#1e1e1e]/10 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-bold uppercase text-[#111111]">
-                Load Local Video Footage (.mp4, .webm, .mov)
+          <div className="p-4 bg-white border border-[#1e1e1e]/10 flex flex-wrap items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold uppercase text-[#111111] break-words">
+                {uploadedFileName || 'Load Local Video Footage (.mp4, .webm, .mov)'}
               </p>
-              <p className="text-[11px] text-[#838282] mt-0.5">
-                Canvas samples frames live with active stress injectors applied.
+              <p className="text-[11px] text-[#838282] mt-0.5 leading-snug">
+                {uploadAudioStatus === 'none' &&
+                  'Canvas samples frames and decodes your video audio track automatically for transcription.'}
+                {uploadAudioStatus === 'decoding' && 'Decoding audio track for 16 kHz transcription...'}
+                {uploadAudioStatus === 'ready' &&
+                  `Audio track decoded (${Math.round(uploadCurrentSec)}s / ${Math.round(uploadDurationSec)}s) · Leave prompt empty to auto-transcribe speech.`}
+                {uploadAudioStatus === 'silent' &&
+                  'Silent video detected (no spoken audio track) — type a prompt below to analyze frames.'}
               </p>
             </div>
-            <label className="px-4 py-2 text-[11px] font-bold uppercase border border-[#1e1e1e] btn-invert cursor-pointer whitespace-nowrap">
-              Choose Video
-              <input
-                type="file"
-                accept="video/*"
-                onChange={handleVideoFileUpload}
-                className="hidden"
-              />
-            </label>
+            <div className="flex items-center gap-2 shrink-0">
+              {uploadedObjectUrlRef.current && (
+                <>
+                  <button
+                    type="button"
+                    onClick={toggleUploadPlayback}
+                    title={uploadPlaying ? 'Pause video' : 'Play video'}
+                    className="p-2 border border-[#1e1e1e]/20 hover:border-black text-[#111111] cursor-pointer"
+                  >
+                    {uploadPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadMuted((m) => !m)}
+                    title={uploadMuted ? 'Unmute video' : 'Mute video'}
+                    className="p-2 border border-[#1e1e1e]/20 hover:border-black text-[#111111] cursor-pointer"
+                  >
+                    {uploadMuted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+                </>
+              )}
+              <label className="px-4 py-2 text-[11px] font-bold uppercase border border-[#1e1e1e] btn-invert cursor-pointer whitespace-nowrap">
+                {uploadedFileName ? 'Replace Video' : 'Choose Video'}
+                <input
+                  type="file"
+                  accept="video/*"
+                  onChange={handleVideoFileUpload}
+                  className="hidden"
+                />
+              </label>
+            </div>
           </div>
         )}
 
@@ -572,7 +801,7 @@ export function LiveStudioView({
 
         {/* E.2 Video Canvas Area (16:9 Aspect Ratio, Strictly Centered) */}
         <div className="relative aspect-video bg-gradient-to-br from-[#e8e8e8] to-[#f2f2f2] rounded-sm overflow-hidden border border-[#1e1e1e]/10 flex items-center justify-center">
-          <video ref={videoRef} playsInline muted className="hidden" />
+          <video ref={videoRef} playsInline muted={sourceMode === 'camera' ? true : uploadMuted} className="hidden" />
 
           {/* Centered Optical Reticle Placeholder when live camera/upload is waiting */}
           {sourceMode !== 'scenario' && !cameraReady && (
@@ -647,17 +876,36 @@ export function LiveStudioView({
                 }
               }}
               aria-label="Spoken voice prompt or scenario transcript"
-              placeholder="Describe the item you are holding or speak into your mic..."
+              placeholder={
+                sourceMode === 'upload'
+                  ? 'Leave blank to auto-transcribe your video audio track, or type a prompt override...'
+                  : sourceMode === 'camera'
+                    ? 'Speak into your mic with this blank, or type a prompt override...'
+                    : 'Describe the item you are holding or speak into your mic...'
+              }
               className="flex-1 w-full bg-transparent outline-none text-sm font-medium leading-relaxed text-[#111111] placeholder:text-[#b6b5b5] resize-y min-h-[44px]"
             />
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#1e1e1e]/10">
-            <span className="mono text-[10px] uppercase tracking-wider text-[#838282]">
-              {sourceMode === 'camera' && micActive
-                ? 'Live Mic Buffer Active · 16 kHz WAV'
-                : 'Audio / Spoken Context Prompt (Enter to Analyze)'}
-            </span>
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="mono text-[10px] uppercase tracking-wider text-[#838282]">
+                {sourceMode === 'camera' && micActive
+                  ? 'Live Mic Buffer Active · 16 kHz WAV'
+                  : sourceMode === 'upload' && uploadAudioStatus === 'ready'
+                    ? 'Video Audio Ready · Auto-Transcribing Blank Prompt'
+                    : 'Audio / Spoken Context Prompt (Enter to Analyze)'}
+              </span>
+              {spokenHint.trim().length > 0 && sourceMode !== 'scenario' && (
+                <button
+                  type="button"
+                  onClick={() => setSpokenHint('')}
+                  className="text-[10px] font-bold uppercase text-[#0052cc] hover:underline cursor-pointer"
+                >
+                  Clear Prompt (Auto-Transcribe)
+                </button>
+              )}
+            </div>
 
             <div className="flex items-center gap-4 ml-auto">
               <button
@@ -964,11 +1212,17 @@ export function LiveStudioView({
                 {isAnalyzing
                   ? liveHydrogen
                     ? `ACTIVE · ${liveHydrogen.latencyMs}MS`
-                    : liveStage === 'gate'
-                      ? 'QUEUED (GATE FIRST)'
-                      : 'SCANNING...'
+                    : liveStage === 'transcribe'
+                      ? 'TRANSCRIBING AUDIO...'
+                      : liveStage === 'gate'
+                        ? liveTranscript
+                          ? `AUDIO ${liveTranscript.latencyMs}MS · GATE NEXT`
+                          : 'QUEUED (GATE FIRST)'
+                        : 'SCANNING...'
                   : latestTrace?.status === 'held_by_gate'
-                    ? 'SKIPPED (GATE HELD)'
+                    ? latestTrace.hydrogen.latencyMs > 0
+                      ? `TRANSCRIBED · ${latestTrace.hydrogen.latencyMs}MS`
+                      : 'SKIPPED (GATE HELD)'
                     : latestTrace
                       ? `ACTIVE · ${latestTrace.hydrogen.latencyMs}MS`
                       : 'IDLE'}
@@ -1001,7 +1255,9 @@ export function LiveStudioView({
                     ? 'BYPASSED'
                     : liveGate
                       ? `${liveGate.passed ? 'PASS' : 'HELD'} · P=${liveGate.frameUsableProb.toFixed(2)}`
-                      : 'EVALUATING...'
+                      : liveStage === 'transcribe'
+                        ? 'AWAITING AUDIO'
+                        : 'EVALUATING...'
                   : latestTrace?.mode === 'baseline'
                     ? 'BYPASSED'
                     : latestTrace?.decisionGate
@@ -1044,22 +1300,48 @@ export function LiveStudioView({
             </div>
           </div>
 
+          {isAnalyzing && liveTranscript && (
+            <div className="pt-3 mt-1 border-t border-[#1e1e1e]/10 text-[11px] leading-relaxed text-[#111111]">
+              <span className="font-bold uppercase text-[#0052cc] mr-1.5">
+                Live Transcript ({liveTranscript.latencyMs}ms):
+              </span>
+              {liveTranscript.text ? (
+                <>&ldquo;{liveTranscript.text}&rdquo;</>
+              ) : (
+                <span className="text-[#838282]">
+                  No spoken words detected · {liveTranscript.noiseNote}
+                </span>
+              )}
+            </div>
+          )}
+
           {latestTrace ? (
             <div className="pt-4 mt-1 border-t border-[#1e1e1e]/10 space-y-2 text-xs text-[#111111]">
-              {latestTrace.hydrogen.spokenTranscript && (
+              {latestTrace.hydrogen.spokenTranscript ? (
                 <p className="text-[11px] leading-relaxed">
                   <span className="font-bold uppercase text-[#111111] mr-1.5">Transcript:</span>
                   &ldquo;{latestTrace.hydrogen.spokenTranscript}&rdquo;
                 </p>
+              ) : (
+                latestTrace.hydrogen.acousticNoiseAssessment && (
+                  <p className="text-[11px] leading-relaxed text-[#838282]">
+                    <span className="font-bold uppercase text-[#111111] mr-1.5">Audio Check:</span>
+                    {latestTrace.hydrogen.acousticNoiseAssessment}
+                  </p>
+                )
               )}
-              <p className="text-[11px] leading-relaxed">
-                <span className="font-bold uppercase text-[#838282] mr-1.5">Cues:</span>
-                {latestTrace.hydrogen.visualObjects.slice(0, 5).join(', ')}
-                {latestTrace.hydrogen.materialsAndFinishes.length > 0 &&
-                  ` (${latestTrace.hydrogen.materialsAndFinishes.slice(0, 3).join(', ')})`}
-              </p>
+              {latestTrace.hydrogen.visualObjects.length > 0 && (
+                <p className="text-[11px] leading-relaxed">
+                  <span className="font-bold uppercase text-[#838282] mr-1.5">Cues:</span>
+                  {latestTrace.hydrogen.visualObjects.slice(0, 5).join(', ')}
+                  {latestTrace.hydrogen.materialsAndFinishes.length > 0 &&
+                    ` (${latestTrace.hydrogen.materialsAndFinishes.slice(0, 3).join(', ')})`}
+                </p>
+              )}
               <p className="text-[11px] text-[#838282]">
-                <span className="font-bold uppercase mr-1.5">Optics:</span>
+                <span className="font-bold uppercase mr-1.5">
+                  {latestTrace.status === 'held_by_gate' ? 'Scene Check:' : 'Optics:'}
+                </span>
                 {latestTrace.hydrogen.lightingTone} · {latestTrace.hydrogen.blurOrOcclusionObserved}
               </p>
               {latestTrace.decisionGate?.holdReason && (
@@ -1092,7 +1374,9 @@ export function LiveStudioView({
             <div className="pt-4 mt-1 border-t border-[#1e1e1e]/10 text-[11px] text-[#838282] leading-relaxed">
               {sourceMode === 'scenario'
                 ? scenario.whatTextLoses
-                : 'Point your camera at a space or object and click Analyze Frame or toggle Loop.'}
+                : sourceMode === 'upload'
+                  ? 'Upload a local video, leave the prompt blank to auto-transcribe its speech track, and click Analyze Frame.'
+                  : 'Point your camera at a space or object and click Analyze Frame or toggle Loop.'}
             </div>
           )}
         </div>
