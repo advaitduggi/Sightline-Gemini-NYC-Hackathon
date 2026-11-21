@@ -55,6 +55,7 @@ export function LiveStudioView({
   const [latestTrace, setLatestTrace] = useState<PipelineTrace | null>(null);
   const [traceHistory, setTraceHistory] = useState<PipelineTrace[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [showAdvancedControls, setShowAdvancedControls] = useState(false);
   const [liveStage, setLiveStage] = useState<'idle' | 'gate' | 'synthesis' | 'shopify' | 'baseline'>('idle');
   const [liveGate, setLiveGate] = useState<PipelineTrace['decisionGate'] | null>(null);
   const [liveHydrogen, setLiveHydrogen] = useState<PipelineTrace['hydrogen'] | null>(null);
@@ -190,8 +191,11 @@ export function LiveStudioView({
             src,
             stressConfig,
             tickRef.current,
-            sourceMode === 'scenario' ? scenario.panPattern : 'slow-pan',
+            sourceMode === 'scenario' ? scenario.panPattern : 'none',
           );
+        } else {
+          const ctx = canvas.getContext('2d');
+          ctx?.clearRect(0, 0, canvas.width, canvas.height);
         }
       }
       if (sourceMode !== 'camera' || !micActive) {
@@ -503,19 +507,14 @@ export function LiveStudioView({
                   key={preset.id}
                   type="button"
                   onClick={() => setSelectedScenarioId(preset.id)}
-                  className={`text-left p-3 border transition-colors cursor-pointer ${
+                  className={`text-left px-3 py-2.5 border transition-colors cursor-pointer ${
                     selected
                       ? 'bg-black text-white border-black'
                       : 'bg-white border-[#1e1e1e]/10 text-[#111111] hover:border-[#1e1e1e]/35'
                   }`}
                 >
-                  <p className="text-[11px] font-bold uppercase truncate">{preset.title}</p>
-                  <p
-                    className={`text-[10px] mt-0.5 truncate ${
-                      selected ? 'text-[#b6b5b5]' : 'text-[#838282]'
-                    }`}
-                  >
-                    {preset.category}
+                  <p className="text-[11px] font-bold uppercase leading-snug break-words">
+                    {preset.title}
                   </p>
                 </button>
               );
@@ -571,16 +570,16 @@ export function LiveStudioView({
           </div>
         )}
 
-        {/* E.2 Video Canvas Area (16:9 Aspect Ratio) */}
-        <div className="relative aspect-video bg-gradient-to-br from-[#e8e8e8] to-[#f2f2f2] rounded-sm overflow-hidden border border-[#1e1e1e]/10">
+        {/* E.2 Video Canvas Area (16:9 Aspect Ratio, Strictly Centered) */}
+        <div className="relative aspect-video bg-gradient-to-br from-[#e8e8e8] to-[#f2f2f2] rounded-sm overflow-hidden border border-[#1e1e1e]/10 flex items-center justify-center">
           <video ref={videoRef} playsInline muted className="hidden" />
 
-          {/* Optical Reticle Placeholder when live camera/upload not active yet */}
+          {/* Centered Optical Reticle Placeholder when live camera/upload is waiting */}
           {sourceMode !== 'scenario' && !cameraReady && (
             <div className="absolute inset-0 flex items-center justify-center opacity-20 pointer-events-none">
               <div className="w-32 h-32 border-2 border-dashed border-black rounded-full animate-pulse" />
-              <div className="absolute w-full h-[1px] bg-black" />
-              <div className="absolute h-full w-[1px] bg-black" />
+              <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1px] bg-black" />
+              <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-[1px] bg-black" />
             </div>
           )}
 
@@ -588,7 +587,7 @@ export function LiveStudioView({
             ref={canvasRef}
             width={640}
             height={360}
-            className="w-full h-full object-cover"
+            className="w-full h-full block"
           />
 
           {/* Scrim & Telemetry (Bottom Overlay) */}
@@ -700,211 +699,230 @@ export function LiveStudioView({
           </div>
         </div>
 
-        {/* E.4 Stress Control Grid (2 Columns) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 border-t border-[#1e1e1e]/10 pt-6">
-          {/* LEFT: Stress Injector */}
-          <div className="flex flex-col gap-4">
-            <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
-              Stress Injector
-            </h4>
+        {/* E.4 Minimal Stress Control Grid (2 Columns + Collapsible Fine-Tuning) */}
+        <div className="border-t border-[#1e1e1e]/10 pt-6 space-y-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+            {/* LEFT: Primary Stress Controls */}
+            <div className="flex flex-col gap-4">
+              <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
+                Stress Injector
+              </h4>
 
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Motion Blur
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {stressConfig.blurRadiusPx.toFixed(1)}px
-                  </span>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Motion Blur
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {stressConfig.blurRadiusPx.toFixed(1)}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={14}
+                    step={1}
+                    value={stressConfig.blurRadiusPx}
+                    onChange={(e) =>
+                      onChangeStress({ ...stressConfig, blurRadiusPx: Number(e.target.value) })
+                    }
+                    className="custom-slider"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={14}
-                  step={1}
-                  value={stressConfig.blurRadiusPx}
-                  onChange={(e) =>
-                    onChangeStress({ ...stressConfig, blurRadiusPx: Number(e.target.value) })
-                  }
-                  className="custom-slider"
-                />
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Acoustic Noise
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {Math.round(stressConfig.noiseMixLevel * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.05}
+                    value={stressConfig.noiseMixLevel}
+                    onChange={(e) =>
+                      onChangeStress({ ...stressConfig, noiseMixLevel: Number(e.target.value) })
+                    }
+                    className="custom-slider"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* RIGHT: Primary Mitigation Toggles */}
+            <div className="flex flex-col gap-4">
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
+                  Mitigation Gate
+                </h4>
+                <button
+                  type="button"
+                  onClick={() => setShowAdvancedControls((v) => !v)}
+                  className="text-[10px] font-bold uppercase text-[#0052cc] hover:underline cursor-pointer"
+                >
+                  {showAdvancedControls ? 'Hide Thresholds' : 'Thresholds'}
+                </button>
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Acoustic Noise
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {Math.round(stressConfig.noiseMixLevel * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={stressConfig.noiseMixLevel}
-                  onChange={(e) =>
-                    onChangeStress({ ...stressConfig, noiseMixLevel: Number(e.target.value) })
+              <div className="grid grid-cols-1 gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeMitigations({ ...mitigations, blurGate: !mitigations.blurGate })
                   }
-                  className="custom-slider"
-                />
-              </div>
+                  className="flex items-center gap-2.5 text-left cursor-pointer group"
+                >
+                  <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                    {mitigations.blurGate && <div className="w-1.5 h-1.5 bg-black" />}
+                  </div>
+                  <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                    Decisions API Pre-Filtering
+                  </span>
+                </button>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Low-Light Dimming
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {Math.round(stressConfig.lowLightDimming * 100)}%
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0}
-                  max={0.8}
-                  step={0.05}
-                  value={stressConfig.lowLightDimming}
-                  onChange={(e) =>
-                    onChangeStress({ ...stressConfig, lowLightDimming: Number(e.target.value) })
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeMitigations({ ...mitigations, frameDedup: !mitigations.frameDedup })
                   }
-                  className="custom-slider"
-                />
-              </div>
+                  className="flex items-center gap-2.5 text-left cursor-pointer group"
+                >
+                  <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                    {mitigations.frameDedup && <div className="w-1.5 h-1.5 bg-black" />}
+                  </div>
+                  <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                    Luma Frame-Diff Deduplication
+                  </span>
+                </button>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Stream Cadence
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {stressConfig.targetFps} FPS
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={4}
-                  step={0.5}
-                  value={stressConfig.targetFps}
-                  onChange={(e) =>
-                    onChangeStress({ ...stressConfig, targetFps: Number(e.target.value) })
+                <button
+                  type="button"
+                  onClick={() =>
+                    onChangeMitigations({
+                      ...mitigations,
+                      confidenceHysteresis: !mitigations.confidenceHysteresis,
+                    })
                   }
-                  className="custom-slider"
-                />
+                  className="flex items-center gap-2.5 text-left cursor-pointer group"
+                >
+                  <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
+                    {mitigations.confidenceHysteresis && <div className="w-1.5 h-1.5 bg-black" />}
+                  </div>
+                  <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
+                    Visual-Fit Rubric Sorting
+                  </span>
+                </button>
               </div>
             </div>
           </div>
 
-          {/* RIGHT: Mitigation Gate */}
-          <div className="flex flex-col gap-4">
-            <h4 className="clash-display text-sm font-bold uppercase text-[#111111]">
-              Mitigation Gate
-            </h4>
-
-            <div className="grid grid-cols-1 gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  onChangeMitigations({ ...mitigations, blurGate: !mitigations.blurGate })
-                }
-                className="flex items-center gap-2.5 text-left cursor-pointer group"
-              >
-                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
-                  {mitigations.blurGate && <div className="w-1.5 h-1.5 bg-black" />}
+          {showAdvancedControls && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-4 border-t border-[#1e1e1e]/10">
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Low-Light Dimming
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {Math.round(stressConfig.lowLightDimming * 100)}%
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={0.8}
+                    step={0.05}
+                    value={stressConfig.lowLightDimming}
+                    onChange={(e) =>
+                      onChangeStress({ ...stressConfig, lowLightDimming: Number(e.target.value) })
+                    }
+                    className="custom-slider"
+                  />
                 </div>
-                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
-                  Decisions API Pre-Filtering
-                </span>
-              </button>
 
-              <button
-                type="button"
-                onClick={() =>
-                  onChangeMitigations({ ...mitigations, frameDedup: !mitigations.frameDedup })
-                }
-                className="flex items-center gap-2.5 text-left cursor-pointer group"
-              >
-                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
-                  {mitigations.frameDedup && <div className="w-1.5 h-1.5 bg-black" />}
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Stream Cadence
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {stressConfig.targetFps} FPS
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.5}
+                    max={4}
+                    step={0.5}
+                    value={stressConfig.targetFps}
+                    onChange={(e) =>
+                      onChangeStress({ ...stressConfig, targetFps: Number(e.target.value) })
+                    }
+                    className="custom-slider"
+                  />
                 </div>
-                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
-                  Luma Frame-Diff Deduplication
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() =>
-                  onChangeMitigations({
-                    ...mitigations,
-                    confidenceHysteresis: !mitigations.confidenceHysteresis,
-                  })
-                }
-                className="flex items-center gap-2.5 text-left cursor-pointer group"
-              >
-                <div className="w-3 h-3 border border-black flex items-center justify-center shrink-0">
-                  {mitigations.confidenceHysteresis && <div className="w-1.5 h-1.5 bg-black" />}
-                </div>
-                <span className="text-[10px] uppercase font-bold group-hover:text-[#0052cc]">
-                  Visual-Fit Rubric Sorting
-                </span>
-              </button>
-
-              <div className="space-y-2 pt-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Min Usability Gate
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {mitigations.minUsableProb.toFixed(2)}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min={0.3}
-                  max={0.85}
-                  step={0.05}
-                  value={mitigations.minUsableProb}
-                  onChange={(e) =>
-                    onChangeMitigations({
-                      ...mitigations,
-                      minUsableProb: Number(e.target.value),
-                    })
-                  }
-                  className="custom-slider"
-                />
               </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-end">
-                  <span className="text-[10px] uppercase font-bold text-[#838282]">
-                    Min Intent Gate
-                  </span>
-                  <span className="mono text-xs font-medium text-[#111111]">
-                    {mitigations.minIntentProb.toFixed(2)}
-                  </span>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Min Usability Gate
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {mitigations.minUsableProb.toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.3}
+                    max={0.85}
+                    step={0.05}
+                    value={mitigations.minUsableProb}
+                    onChange={(e) =>
+                      onChangeMitigations({
+                        ...mitigations,
+                        minUsableProb: Number(e.target.value),
+                      })
+                    }
+                    className="custom-slider"
+                  />
                 </div>
-                <input
-                  type="range"
-                  min={0.3}
-                  max={0.85}
-                  step={0.05}
-                  value={mitigations.minIntentProb}
-                  onChange={(e) =>
-                    onChangeMitigations({
-                      ...mitigations,
-                      minIntentProb: Number(e.target.value),
-                    })
-                  }
-                  className="custom-slider"
-                />
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-end">
+                    <span className="text-[10px] uppercase font-bold text-[#838282]">
+                      Min Intent Gate
+                    </span>
+                    <span className="mono text-xs font-medium text-[#111111]">
+                      {mitigations.minIntentProb.toFixed(2)}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0.3}
+                    max={0.85}
+                    step={0.05}
+                    value={mitigations.minIntentProb}
+                    onChange={(e) =>
+                      onChangeMitigations({
+                        ...mitigations,
+                        minIntentProb: Number(e.target.value),
+                      })
+                    }
+                    className="custom-slider"
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
       </section>
 
@@ -1148,7 +1166,7 @@ export function LiveStudioView({
                               : 'Intent Matched'}
                         </span>
                         <span
-                          className={`text-[9px] truncate ${
+                          className={`text-[10px] leading-snug break-words ${
                             isHeld ? 'text-red-500' : 'text-[#838282]'
                           }`}
                         >

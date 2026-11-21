@@ -25,7 +25,7 @@ export function ProductCard({ product, onAddToBag }: ProductCardProps) {
         ) : (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-[#838282] px-3 text-center">
             <Package className="w-6 h-6 opacity-40" />
-            <span className="text-[10px] uppercase font-bold tracking-wider truncate max-w-full">
+            <span className="text-[10px] uppercase font-bold tracking-wider break-words max-w-full">
               {product.merchantName}
             </span>
           </div>
@@ -40,8 +40,8 @@ export function ProductCard({ product, onAddToBag }: ProductCardProps) {
 
       <div className="flex flex-col gap-1 flex-1 justify-between">
         <div className="space-y-1">
-          <div className="flex justify-between items-baseline gap-2">
-            <h3 className="text-[11px] uppercase font-bold text-[#111111] truncate">
+          <div className="flex justify-between items-start gap-2">
+            <h3 className="text-[11px] uppercase font-bold text-[#111111] leading-snug break-words">
               {product.title}
             </h3>
             <span className="mono text-[11px] font-bold text-[#111111] shrink-0">
@@ -49,7 +49,7 @@ export function ProductCard({ product, onAddToBag }: ProductCardProps) {
             </span>
           </div>
 
-          <div className="text-[10px] text-[#838282] truncate">
+          <div className="text-[10px] text-[#838282] leading-snug break-words">
             <span>{product.merchantName}</span>
             {product.fitLabel && (
               <>

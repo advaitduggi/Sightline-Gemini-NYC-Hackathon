@@ -431,7 +431,7 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
           <span className="text-[10px] font-bold uppercase text-[#838282]">
             First Gated Breakpoint
           </span>
-          <p className="mono text-lg font-bold text-[#111111] mt-2 truncate">
+          <p className="mono text-base font-bold text-[#111111] mt-2 leading-snug break-words">
             {results.length === 0
               ? '—'
               : gatedBreaks.length > 0
@@ -572,39 +572,41 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
                       <td className="py-3 px-4 text-[11px] font-bold uppercase text-[#111111] whitespace-nowrap">
                         {row.stepLabel}
                       </td>
-                      <td className="py-3 px-4 text-[11px] text-[#838282] max-w-[180px] truncate">
+                      <td className="py-3 px-4 text-[11px] text-[#838282] leading-snug min-w-[160px]">
                         {row.baseline.hallucinatedOrLowQuality ? (
-                          <span className="text-amber-700 font-medium">
+                          <span className="text-amber-700 font-medium break-words">
                             Fired: {row.baseline.topProductTitle || row.baseline.summary}
                           </span>
                         ) : (
-                          <span>{row.baseline.topProductTitle || row.baseline.summary}</span>
+                          <span className="break-words">
+                            {row.baseline.topProductTitle || row.baseline.summary}
+                          </span>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111]">
+                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111] whitespace-nowrap">
                         {(row.gated.frameUsableProb * 100).toFixed(0)}%
                       </td>
-                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111]">
+                      <td className="py-3 px-4 text-right mono text-[11px] text-[#111111] whitespace-nowrap">
                         {(row.gated.intentProb * 100).toFixed(0)}%
                       </td>
-                      <td className="py-3 px-4 text-[11px]">
+                      <td className="py-3 px-4 text-[11px] leading-snug min-w-[180px]">
                         {row.gated.brokeHere ? (
-                          <span className="inline-flex items-center gap-1 text-red-700 font-bold">
-                            <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate max-w-[160px]">
+                          <span className="inline-flex items-start gap-1 text-red-700 font-bold">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span className="break-words">
                               {row.gated.breakReason || 'Broke'}
                             </span>
                           </span>
                         ) : row.gated.passedGate ? (
-                          <span className="inline-flex items-center gap-1 text-green-700 font-bold">
-                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                            <span className="truncate max-w-[160px]">
+                          <span className="inline-flex items-start gap-1 text-green-700 font-bold">
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span className="break-words">
                               {row.gated.topProductTitle || 'Matched'}
                             </span>
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 text-amber-700 font-bold">
-                            <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                          <span className="inline-flex items-start gap-1 text-amber-700 font-bold">
+                            <ShieldAlert className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                             <span>Held ({row.gated.routeChoice})</span>
                           </span>
                         )}

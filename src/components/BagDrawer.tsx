@@ -86,7 +86,7 @@ export function BagDrawer({
                 </div>
 
                 <div className="flex-1 min-w-0">
-                  <div className="text-[10px] text-[#838282] truncate">
+                  <div className="text-[10px] text-[#838282] leading-snug break-words">
                     <span>{product.merchantName}</span>
                     {typeof product.fitScoreNormalized === 'number' && (
                       <>
@@ -97,7 +97,7 @@ export function BagDrawer({
                       </>
                     )}
                   </div>
-                  <h3 className="text-xs font-bold uppercase text-[#111111] mt-1 line-clamp-2">
+                  <h3 className="text-xs font-bold uppercase text-[#111111] mt-1 leading-snug break-words">
                     {product.title}
                   </h3>
                   <div className="mt-2.5 flex items-center justify-between gap-2">

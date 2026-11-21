@@ -5,7 +5,7 @@ export function renderStressedFrameToCanvas(
   source: HTMLImageElement | HTMLVideoElement,
   stress: StressConfig,
   tick: number,
-  panPattern: ScenarioPreset['panPattern'] = 'slow-pan',
+  panPattern: ScenarioPreset['panPattern'] | 'none' = 'none',
 ): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
