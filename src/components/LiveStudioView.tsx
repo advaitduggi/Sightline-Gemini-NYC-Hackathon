@@ -628,58 +628,76 @@ export function LiveStudioView({
           </div>
         </div>
 
-        {/* E.3 Prompt Input with Mic Icon, Analyze Trigger & Loop Toggle */}
-        <div className="flex flex-wrap sm:flex-nowrap items-center gap-4 border border-[#1e1e1e]/20 p-4 bg-white rounded-sm">
-          {sourceMode === 'camera' && micActive ? (
-            <Mic className="w-5 h-5 text-[#0052cc] shrink-0" />
-          ) : (
-            <MicOff className="w-5 h-5 text-[#0052cc] shrink-0" />
-          )}
-
-          <input
-            type="text"
-            value={spokenHint}
-            onChange={(e) => setSpokenHint(e.target.value)}
-            aria-label="Spoken voice prompt or scenario transcript"
-            placeholder="Describe the item you are holding..."
-            className="flex-1 min-w-[180px] bg-transparent outline-none text-sm font-medium text-[#111111] placeholder:text-[#b6b5b5]"
-          />
-
-          <button
-            type="button"
-            onClick={() => analyzeFrameNow(false)}
-            disabled={isAnalyzing}
-            className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0052cc] text-white text-[11px] font-bold uppercase hover:opacity-90 disabled:opacity-60 transition-opacity whitespace-nowrap cursor-pointer"
-          >
-            {isAnalyzing ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+        {/* E.3 Full-Text Prompt / Audio Transcription Box with Analyze Trigger & Loop Toggle */}
+        <div className="border border-[#1e1e1e]/20 p-4 bg-white rounded-sm flex flex-col gap-3">
+          <div className="flex items-start gap-3">
+            {sourceMode === 'camera' && micActive ? (
+              <Mic className="w-5 h-5 text-[#0052cc] shrink-0 mt-0.5" />
             ) : (
-              <Zap className="w-3.5 h-3.5" />
+              <MicOff className="w-5 h-5 text-[#0052cc] shrink-0 mt-0.5" />
             )}
-            <span>{isAnalyzing ? 'Running' : 'Analyze Frame'}</span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => setIsStreaming((s) => !s)}
-            aria-pressed={isStreaming}
-            className="flex items-center gap-2 border-l pl-4 border-[#1e1e1e]/10 cursor-pointer shrink-0"
-          >
-            <span className="text-[10px] font-bold uppercase tracking-tighter text-[#111111]">
-              Loop
+            <textarea
+              rows={2}
+              value={spokenHint}
+              onChange={(e) => setSpokenHint(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  if (!isAnalyzing) analyzeFrameNow(false);
+                }
+              }}
+              aria-label="Spoken voice prompt or scenario transcript"
+              placeholder="Describe the item you are holding or speak into your mic..."
+              className="flex-1 w-full bg-transparent outline-none text-sm font-medium leading-relaxed text-[#111111] placeholder:text-[#b6b5b5] resize-y min-h-[44px]"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[#1e1e1e]/10">
+            <span className="mono text-[10px] uppercase tracking-wider text-[#838282]">
+              {sourceMode === 'camera' && micActive
+                ? 'Live Mic Buffer Active · 16 kHz WAV'
+                : 'Audio / Spoken Context Prompt (Enter to Analyze)'}
             </span>
-            <div
-              className={`w-8 h-4 rounded-full relative flex items-center px-0.5 transition-colors ${
-                isStreaming ? 'bg-[#0052cc]' : 'bg-black'
-              }`}
-            >
-              <div
-                className={`w-3 h-3 bg-white rounded-full transition-transform duration-150 ${
-                  isStreaming ? 'translate-x-4' : 'translate-x-0'
-                }`}
-              />
+
+            <div className="flex items-center gap-4 ml-auto">
+              <button
+                type="button"
+                onClick={() => analyzeFrameNow(false)}
+                disabled={isAnalyzing}
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-[#0052cc] text-white text-[11px] font-bold uppercase hover:opacity-90 disabled:opacity-60 transition-opacity whitespace-nowrap cursor-pointer"
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Zap className="w-3.5 h-3.5" />
+                )}
+                <span>{isAnalyzing ? 'Running' : 'Analyze Frame'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsStreaming((s) => !s)}
+                aria-pressed={isStreaming}
+                className="flex items-center gap-2 border-l pl-4 border-[#1e1e1e]/10 cursor-pointer shrink-0"
+              >
+                <span className="text-[10px] font-bold uppercase tracking-tighter text-[#111111]">
+                  Loop
+                </span>
+                <div
+                  className={`w-8 h-4 rounded-full relative flex items-center px-0.5 transition-colors ${
+                    isStreaming ? 'bg-[#0052cc]' : 'bg-black'
+                  }`}
+                >
+                  <div
+                    className={`w-3 h-3 bg-white rounded-full transition-transform duration-150 ${
+                      isStreaming ? 'translate-x-4' : 'translate-x-0'
+                    }`}
+                  />
+                </div>
+              </button>
             </div>
-          </button>
+          </div>
         </div>
 
         {/* E.4 Stress Control Grid (2 Columns) */}
@@ -1010,6 +1028,12 @@ export function LiveStudioView({
 
           {latestTrace ? (
             <div className="pt-4 mt-1 border-t border-[#1e1e1e]/10 space-y-2 text-xs text-[#111111]">
+              {latestTrace.hydrogen.spokenTranscript && (
+                <p className="text-[11px] leading-relaxed">
+                  <span className="font-bold uppercase text-[#111111] mr-1.5">Transcript:</span>
+                  &ldquo;{latestTrace.hydrogen.spokenTranscript}&rdquo;
+                </p>
+              )}
               <p className="text-[11px] leading-relaxed">
                 <span className="font-bold uppercase text-[#838282] mr-1.5">Cues:</span>
                 {latestTrace.hydrogen.visualObjects.slice(0, 5).join(', ')}
