@@ -39,10 +39,19 @@ function stripDataUrlPrefix(b64: string): string {
   return idx >= 0 ? b64.slice(idx + 1) : b64;
 }
 
+function redactSecrets(text: string): string {
+  return text
+    .replace(/(AIza[0-9A-Za-z_-]{10,}|ghp_[0-9A-Za-z]{10,}|github_pat_[0-9A-Za-z_]{10,})/g, '[REDACTED]')
+    .replace(/Bearer\s+[0-9A-Za-z._-]+/gi, 'Bearer [REDACTED]');
+}
+
 function formatGeminiError(err: unknown): { status: number; message: string; code?: string } {
   const anyErr = err as { status?: number; message?: string; code?: string };
-  const msg = anyErr?.message || 'Unknown upstream model error';
-  const status = typeof anyErr?.status === 'number' ? anyErr.status : 500;
+  const rawMsg = anyErr?.message || 'Unknown upstream model error';
+  const msg = redactSecrets(rawMsg);
+  const status = typeof anyErr?.status === 'number' && anyErr.status >= 400 && anyErr.status < 600
+    ? anyErr.status
+    : 500;
   if (msg.includes('403') || msg.includes('PERMISSION_DENIED')) {
     return {
       status: 403,
@@ -59,6 +68,33 @@ function formatGeminiError(err: unknown): { status: number; message: string; cod
     };
   }
   return { status, message: msg, code: anyErr?.code };
+}
+
+function validateExternalMcpUrl(rawUrl: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw Object.assign(new Error('Invalid Storefront MCP URL.'), { status: 400, code: 'INVALID_URL' });
+  }
+  if (parsed.protocol !== 'https:') {
+    throw Object.assign(new Error('Storefront MCP URL must use HTTPS.'), { status: 400, code: 'INVALID_PROTOCOL' });
+  }
+  const host = parsed.hostname.toLowerCase();
+  const isPrivateHost =
+    host === 'localhost' ||
+    host === '::1' ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    /^(127\.|10\.|192\.168\.|169\.254\.|0\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host) ||
+    /^(fc|fd|fe80)/i.test(host);
+  if (isPrivateHost) {
+    throw Object.assign(new Error('Private or loopback MCP hosts are not allowed.'), {
+      status: 400,
+      code: 'BLOCKED_HOST',
+    });
+  }
+  return parsed.toString();
 }
 
 interface RawShopifyProduct {
@@ -98,9 +134,9 @@ async function searchShopifyMcp(
   const t0 = Date.now();
   const limit = Math.min(Math.max(options?.limit ?? 6, 1), 12);
   const customUrl = options?.storefrontMcpUrl?.trim();
-  const endpoint = customUrl || SHOPIFY_GLOBAL_MCP;
+  const endpoint = customUrl ? validateExternalMcpUrl(customUrl) : SHOPIFY_GLOBAL_MCP;
 
-  const isCustomStorefront = Boolean(customUrl && customUrl !== SHOPIFY_GLOBAL_MCP);
+  const isCustomStorefront = Boolean(customUrl && endpoint !== SHOPIFY_GLOBAL_MCP);
 
   const payload = isCustomStorefront
     ? {
@@ -152,6 +188,7 @@ async function searchShopifyMcp(
       Accept: 'application/json, text/event-stream',
     },
     body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(12000),
   });
 
   if (!res.ok) {
@@ -636,6 +673,14 @@ async function scoreCatalogProductsWithDecisions(
 
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(self)');
+    next();
+  });
   app.use(express.json({ limit: '25mb' }));
 
   app.get('/api/health', (_req, res) => {
@@ -673,11 +718,11 @@ async function startServer() {
   app.post('/api/shopify/search', async (req, res) => {
     try {
       const { query, limit, maxPriceUsd, storefrontMcpUrl, intentContext } = req.body ?? {};
-      if (!query || typeof query !== 'string') {
+      if (!query || typeof query !== 'string' || !query.trim()) {
         res.status(400).json({ error: 'Search query string is required.' });
         return;
       }
-      const data = await searchShopifyMcp(query, {
+      const data = await searchShopifyMcp(query.trim().slice(0, 240), {
         limit,
         maxPriceUsd,
         storefrontMcpUrl,
