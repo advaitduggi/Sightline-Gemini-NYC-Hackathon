@@ -1,0 +1,11 @@
+{
+  "name": "Sightline",
+  "description": "Live multimodal vision-to-commerce agent and stress-test benchmark powered by Gemini 4, Decisions API, and Shopify Global Catalog MCP.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
