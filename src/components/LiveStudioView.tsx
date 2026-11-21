@@ -1026,12 +1026,24 @@ export function LiveStudioView({
                 </p>
               )}
               {latestTrace.neon && (
-                <p className="text-[11px] leading-relaxed">
-                  <span className="font-bold uppercase text-[#0052cc] mr-1.5">
-                    Raw Media Delta:
-                  </span>
-                  {latestTrace.neon.whatRawMediaRevealed}
-                </p>
+                <>
+                  <p className="text-[11px] leading-relaxed">
+                    <span className="font-bold uppercase text-[#0052cc] mr-1.5">
+                      Raw Media Delta:
+                    </span>
+                    {latestTrace.neon.whatRawMediaRevealed}
+                  </p>
+                  {latestTrace.neon.searchQueries.length > 0 && (
+                    <p className="text-[11px] text-[#838282]">
+                      <span className="font-bold uppercase text-[#111111] mr-1.5">
+                        Shopify MCP Query:
+                      </span>
+                      <span className="mono text-[#111111]">
+                        &ldquo;{latestTrace.neon.searchQueries[0]}&rdquo;
+                      </span>
+                    </p>
+                  )}
+                </>
               )}
             </div>
           ) : (
