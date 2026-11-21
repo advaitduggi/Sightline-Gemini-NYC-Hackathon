@@ -214,8 +214,8 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
       const img = await loadScenarioImage(scenario.imagePath);
       if (!offscreenCanvasRef.current) {
         const c = document.createElement('canvas');
-        c.width = 960;
-        c.height = 540;
+        c.width = 640;
+        c.height = 360;
         offscreenCanvasRef.current = c;
       }
       const canvas = offscreenCanvasRef.current;
@@ -238,8 +238,8 @@ export function BenchmarkView({ mitigations, onRecordFailure }: BenchmarkViewPro
           scenario.panPattern,
         );
 
-        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        const audioBase64 = synthesizeStressAudioWav(1.5, spec.noiseMixLevel, spec.hasIntent);
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.78);
+        const audioBase64 = synthesizeStressAudioWav(0.8, spec.noiseMixLevel, spec.hasIntent);
 
         const res = await fetch('/api/benchmark/step', {
           method: 'POST',

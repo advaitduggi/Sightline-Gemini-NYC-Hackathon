@@ -136,6 +136,7 @@ export default function App() {
             failures={failures}
             mitigations={mitigations}
             onChangeMitigations={setMitigations}
+            onRecordFailure={handleRecordFailure}
             onClearFailures={() => setFailures([])}
           />
         )}

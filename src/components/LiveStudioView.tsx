@@ -55,6 +55,10 @@ export function LiveStudioView({
   const [latestTrace, setLatestTrace] = useState<PipelineTrace | null>(null);
   const [traceHistory, setTraceHistory] = useState<PipelineTrace[]>([]);
   const [audioLevel, setAudioLevel] = useState<number>(0);
+  const [liveStage, setLiveStage] = useState<'idle' | 'gate' | 'synthesis' | 'shopify' | 'baseline'>('idle');
+  const [liveGate, setLiveGate] = useState<PipelineTrace['decisionGate'] | null>(null);
+  const [liveHydrogen, setLiveHydrogen] = useState<PipelineTrace['hydrogen'] | null>(null);
+  const [liveNeon, setLiveNeon] = useState<PipelineTrace['neon'] | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -230,7 +234,7 @@ export function LiveStudioView({
       return encodeFloat32ToWavBase64(merged, 16000);
     }
     return synthesizeStressAudioWav(
-      1.6,
+      0.8,
       stressConfig.noiseMixLevel,
       spokenHint.trim().length > 0,
     );
@@ -256,14 +260,25 @@ export function LiveStudioView({
       inFlightRef.current = true;
       setIsAnalyzing(true);
       setApiError(null);
+      setLiveStage(pipelineMode === 'baseline' ? 'baseline' : 'gate');
+      setLiveGate(null);
+      setLiveHydrogen(null);
+      setLiveNeon(null);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000);
 
       try {
-        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        const imageDataUrl = canvas.toDataURL('image/jpeg', 0.78);
         const audioBase64 = captureCurrentAudioWavBase64();
 
-        const res = await fetch('/api/pipeline/analyze', {
+        const res = await fetch('/api/pipeline/analyze?stream=1', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'text/event-stream',
+          },
+          signal: controller.signal,
           body: JSON.stringify({
             imageBase64: imageDataUrl,
             imageMimeType: 'image/jpeg',
@@ -283,9 +298,65 @@ export function LiveStudioView({
           }),
         });
 
-        const payload = await res.json();
-        if (!res.ok) {
-          throw new Error(payload.error || `Pipeline failed with HTTP ${res.status}`);
+        const contentType = res.headers.get('content-type') || '';
+        let payload: PipelineTrace | null = null;
+
+        if (!res.ok && !contentType.includes('text/event-stream')) {
+          const errJson = await res.json().catch(() => ({}));
+          throw new Error(errJson.error || `Pipeline failed with HTTP ${res.status}`);
+        }
+
+        if (contentType.includes('text/event-stream') && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+
+            let sepIdx: number;
+            while ((sepIdx = buffer.indexOf('\n\n')) >= 0) {
+              const block = buffer.slice(0, sepIdx);
+              buffer = buffer.slice(sepIdx + 2);
+
+              let eventName = 'message';
+              const dataLines: string[] = [];
+              for (const line of block.split('\n')) {
+                if (line.startsWith('event:')) eventName = line.slice(6).trim();
+                else if (line.startsWith('data:')) dataLines.push(line.slice(5).trim());
+              }
+              if (dataLines.length === 0) continue;
+              const parsed = JSON.parse(dataLines.join('\n'));
+
+              if (eventName === 'stage') {
+                if (parsed.stage === 'gate' && parsed.status === 'running') {
+                  setLiveStage('gate');
+                } else if (parsed.stage === 'gate' && parsed.status === 'done') {
+                  setLiveGate(parsed.decisionGate);
+                } else if (parsed.stage === 'synthesis' && parsed.status === 'running') {
+                  setLiveStage('synthesis');
+                } else if (parsed.stage === 'hydrogen' && parsed.status === 'done') {
+                  setLiveHydrogen(parsed.hydrogen);
+                } else if (parsed.stage === 'neon' && parsed.status === 'done') {
+                  setLiveNeon(parsed.neon);
+                } else if (parsed.stage === 'shopify' && parsed.status === 'running') {
+                  setLiveStage('shopify');
+                }
+              } else if (eventName === 'done') {
+                payload = parsed as PipelineTrace;
+              } else if (eventName === 'error') {
+                throw new Error(parsed.error || 'Upstream pipeline error');
+              }
+            }
+          }
+        } else {
+          payload = (await res.json()) as PipelineTrace;
+        }
+
+        if (!payload) {
+          throw new Error('Pipeline closed before returning a final trace.');
         }
 
         const fullTrace: PipelineTrace = {
@@ -323,11 +394,20 @@ export function LiveStudioView({
           });
         }
       } catch (err) {
-        setApiError(err instanceof Error ? err.message : 'Unexpected analysis error');
+        const isAbort = err instanceof DOMException && err.name === 'AbortError';
+        setApiError(
+          isAbort
+            ? 'Analysis timed out after 30s. Try clicking Analyze Frame again or lowering stream cadence.'
+            : err instanceof Error
+              ? err.message
+              : 'Unexpected analysis error',
+        );
         setIsStreaming(false);
       } finally {
+        clearTimeout(timeoutId);
         inFlightRef.current = false;
         setIsAnalyzing(false);
+        setLiveStage('idle');
       }
     },
     [
@@ -506,8 +586,8 @@ export function LiveStudioView({
 
           <canvas
             ref={canvasRef}
-            width={960}
-            height={540}
+            width={640}
+            height={360}
             className="w-full h-full object-cover"
           />
 
@@ -833,17 +913,29 @@ export function LiveStudioView({
               <span
                 className={`text-[10px] mono ${
                   isAnalyzing
-                    ? 'text-[#0052cc]'
-                    : latestTrace
+                    ? liveHydrogen
                       ? 'text-green-700'
-                      : 'text-[#838282]'
+                      : liveStage === 'gate'
+                        ? 'text-[#838282]'
+                        : 'text-[#0052cc]'
+                    : latestTrace?.status === 'held_by_gate'
+                      ? 'text-amber-700'
+                      : latestTrace
+                        ? 'text-green-700'
+                        : 'text-[#838282]'
                 }`}
               >
                 {isAnalyzing
-                  ? 'SCANNING...'
-                  : latestTrace
-                    ? `ACTIVE · ${latestTrace.hydrogen.latencyMs}MS`
-                    : 'IDLE'}
+                  ? liveHydrogen
+                    ? `ACTIVE · ${liveHydrogen.latencyMs}MS`
+                    : liveStage === 'gate'
+                      ? 'QUEUED (GATE FIRST)'
+                      : 'SCANNING...'
+                  : latestTrace?.status === 'held_by_gate'
+                    ? 'SKIPPED (GATE HELD)'
+                    : latestTrace
+                      ? `ACTIVE · ${latestTrace.hydrogen.latencyMs}MS`
+                      : 'IDLE'}
               </span>
             </div>
 
@@ -853,18 +945,32 @@ export function LiveStudioView({
               </span>
               <span
                 className={`text-[10px] mono font-bold ${
-                  latestTrace?.decisionGate
-                    ? latestTrace.decisionGate.passed
-                      ? 'text-[#111111]'
-                      : 'text-amber-700'
-                    : 'text-[#838282]'
+                  isAnalyzing
+                    ? liveStage === 'baseline'
+                      ? 'text-[#838282]'
+                      : liveGate
+                        ? liveGate.passed
+                          ? 'text-green-700'
+                          : 'text-amber-700'
+                        : 'text-[#0052cc]'
+                    : latestTrace?.decisionGate
+                      ? latestTrace.decisionGate.passed
+                        ? 'text-[#111111]'
+                        : 'text-amber-700'
+                      : 'text-[#838282]'
                 }`}
               >
-                {latestTrace?.mode === 'baseline'
-                  ? 'BYPASSED'
-                  : latestTrace?.decisionGate
-                    ? `${latestTrace.decisionGate.passed ? 'PASS' : 'HELD'} · P=${latestTrace.decisionGate.frameUsableProb.toFixed(2)}`
-                    : '0 TOKENS'}
+                {isAnalyzing
+                  ? liveStage === 'baseline'
+                    ? 'BYPASSED'
+                    : liveGate
+                      ? `${liveGate.passed ? 'PASS' : 'HELD'} · P=${liveGate.frameUsableProb.toFixed(2)}`
+                      : 'EVALUATING...'
+                  : latestTrace?.mode === 'baseline'
+                    ? 'BYPASSED'
+                    : latestTrace?.decisionGate
+                      ? `${latestTrace.decisionGate.passed ? 'PASS' : 'HELD'} · P=${latestTrace.decisionGate.frameUsableProb.toFixed(2)}`
+                      : '0 TOKENS'}
               </span>
             </div>
 
@@ -875,18 +981,28 @@ export function LiveStudioView({
               <span
                 className={`text-[10px] mono ${
                   isAnalyzing
-                    ? 'text-[#0052cc]'
+                    ? liveNeon
+                      ? 'text-[#0052cc]'
+                      : liveStage === 'synthesis' || liveStage === 'shopify'
+                        ? 'text-[#0052cc]'
+                        : 'text-[#838282]'
                     : latestTrace?.neon
                       ? 'text-[#0052cc]'
                       : 'text-[#838282]'
                 }`}
               >
                 {isAnalyzing
-                  ? 'RESOLVING...'
+                  ? liveNeon
+                    ? `MATCHED · ${liveNeon.latencyMs}MS`
+                    : liveStage === 'synthesis'
+                      ? 'RESOLVING...'
+                      : liveStage === 'shopify'
+                        ? 'QUERYING SHOPIFY...'
+                        : 'STANDBY'
                   : latestTrace?.neon
                     ? `MATCHED · ${latestTrace.neon.latencyMs}MS`
                     : latestTrace?.status === 'held_by_gate'
-                      ? 'SKIPPED'
+                      ? 'SKIPPED (GATE HELD)'
                       : 'STANDBY'}
               </span>
             </div>

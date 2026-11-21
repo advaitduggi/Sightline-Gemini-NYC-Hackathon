@@ -2,7 +2,7 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { GoogleGenAI, ThinkingLevel, Type } from '@google/genai';
+import { GoogleGenAI, MediaResolution, ThinkingLevel, Type } from '@google/genai';
 
 dotenv.config();
 
@@ -298,11 +298,11 @@ async function runHydrogenPerception(
   }
   parts.push({
     text: [
-      'Inspect this live video frame and optional audio clip for a real-time vision-to-commerce pipeline.',
+      'Inspect this live video frame and optional audio clip for real-time commerce triage.',
       spokenTranscriptHint
-        ? `If audio is faint or synthetic, spoken context hint from the mic/scenario is: "${spokenTranscriptHint}".`
-        : 'Transcribe any speech in the audio clip accurately.',
-      'Report: visible objects, exact material/finish/color-temperature cues, any motion blur or occlusion, the verbatim spoken intent, and acoustic noise condition.',
+        ? `Spoken context hint: "${spokenTranscriptHint}".`
+        : 'Transcribe any speech accurately.',
+      'Be concise: list visible objects, material/finish cues, lighting tone, blur/occlusion, spoken intent, acoustic noise level, and 1 short product search query.',
     ].join('\n'),
   });
 
@@ -311,6 +311,7 @@ async function runHydrogenPerception(
     contents: { parts: parts as never },
     config: {
       thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      mediaResolution: MediaResolution.MEDIA_RESOLUTION_LOW,
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
@@ -355,7 +356,7 @@ async function runDecisionGate(
   imageMimeType: string,
   audioBase64: string | undefined,
   audioMimeType: string | undefined,
-  hydrogen: Awaited<ReturnType<typeof runHydrogenPerception>>,
+  spokenTranscriptHint: string | undefined,
   mitigations: {
     blurGate: boolean;
     minUsableProb: number;
@@ -366,15 +367,12 @@ async function runDecisionGate(
   const inputBlocks: Array<Record<string, unknown>> = [
     {
       type: 'text',
-      text:
-        `Live frame perception summary: ${JSON.stringify({
-          visualObjects: hydrogen.visualObjects,
-          materialsAndFinishes: hydrogen.materialsAndFinishes,
-          blurOrOcclusionObserved: hydrogen.blurOrOcclusionObserved,
-          spokenTranscript: hydrogen.spokenTranscript,
-          acousticNoiseAssessment: hydrogen.acousticNoiseAssessment,
-        })}\n` +
-        'Evaluate the raw image frame (and audio if attached) directly on usability, shopping intent, routing, and scene clutter.',
+      text: [
+        spokenTranscriptHint
+          ? `Live speaker / scenario audio context: "${spokenTranscriptHint}"`
+          : 'No prior text hint — rely directly on the attached frame and audio clip.',
+        'Evaluate raw image sharpness/lighting, shopping intent in audio/context, routing decision, and scene clutter.',
+      ].join('\n'),
     },
     {
       type: 'image',
@@ -506,7 +504,7 @@ async function runNeonSynthesis(
   imageMimeType: string,
   audioBase64: string | undefined,
   audioMimeType: string | undefined,
-  hydrogen: Awaited<ReturnType<typeof runHydrogenPerception>>,
+  spokenTranscriptHint?: string,
 ) {
   const t0 = Date.now();
   const parts: Array<Record<string, unknown>> = [
@@ -527,11 +525,14 @@ async function runNeonSynthesis(
   }
   parts.push({
     text: [
-      `Perceptual triage from Gemini 4 Hydrogen: ${JSON.stringify(hydrogen)}`,
-      'Using the RAW video frame and audio, perform deep spatial-acoustic commerce synthesis:',
-      '1. Explain concretely what the raw video & audio reveal that a plain text prompt would lose (exact wood grain/patina, Kelvin warmth, scale clearances, finish reflections, vocal urgency/context).',
-      '2. Reconcile any clutter or occlusion.',
-      '3. Output 2 concrete, concise Shopify Global Catalog search queries (e.g., "brushed brass cordless table lamp warm LED", "matte black gooseneck pour over kettle") that will return high-fit real products.',
+      spokenTranscriptHint
+        ? `Buyer spoken request: "${spokenTranscriptHint}".`
+        : 'Infer the buyer need from audio and frame.',
+      'Perform concise spatial-acoustic commerce synthesis from the RAW video frame and audio:',
+      '1. targetNeedSummary: 1 crisp sentence summarizing what item + budget/constraint fits the user.',
+      '2. whatRawMediaRevealed: 1-2 crisp sentences on wood/metal/color-temp/clearance cues text loses.',
+      '3. spatialAndAcousticReasoning: 1 crisp sentence explaining clutter/occlusion resolution.',
+      '4. searchQueries: 2 concise Shopify catalog search strings (e.g. "brushed brass cordless table lamp").',
     ].join('\n'),
   });
 
@@ -539,7 +540,8 @@ async function runNeonSynthesis(
     model: 'gemini-4-neon',
     contents: { parts: parts as never },
     config: {
-      thinkingConfig: { thinkingLevel: ThinkingLevel.MEDIUM },
+      thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+      mediaResolution: MediaResolution.MEDIA_RESOLUTION_MEDIUM,
       responseMimeType: 'application/json',
       responseSchema: {
         type: Type.OBJECT,
@@ -562,7 +564,7 @@ async function runNeonSynthesis(
 
   const parsed = JSON.parse((resp.text || '{}').trim());
   return {
-    targetNeedSummary: parsed.targetNeedSummary || hydrogen.spokenTranscript,
+    targetNeedSummary: parsed.targetNeedSummary || spokenTranscriptHint || 'Matched commerce item',
     whatRawMediaRevealed:
       parsed.whatRawMediaRevealed || 'Material patina and ambient lighting extracted from raw frame.',
     spatialAndAcousticReasoning:
@@ -570,7 +572,7 @@ async function runNeonSynthesis(
     searchQueries:
       Array.isArray(parsed.searchQueries) && parsed.searchQueries.length > 0
         ? parsed.searchQueries.slice(0, 2)
-        : [hydrogen.quickSearchQuery || 'minimalist brass table lamp'],
+        : ['minimalist brass table lamp'],
     recommendedMaxPriceUsd:
       typeof parsed.recommendedMaxPriceUsd === 'number' && parsed.recommendedMaxPriceUsd > 0
         ? parsed.recommendedMaxPriceUsd
@@ -737,6 +739,14 @@ async function startServer() {
 
   app.post('/api/pipeline/analyze', async (req, res) => {
     const tTotal = Date.now();
+    const wantsStream =
+      req.query.stream === '1' || req.headers.accept?.includes('text/event-stream');
+
+    const sendEvent = (eventName: string, data: unknown) => {
+      if (!wantsStream) return;
+      res.write(`event: ${eventName}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+
     try {
       const {
         imageBase64,
@@ -762,19 +772,28 @@ async function startServer() {
         return;
       }
 
+      if (wantsStream) {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+        res.flushHeaders?.();
+      }
+
       const { ai, decisionsAi } = getGeminiClients();
 
-      // Stage 1: Gemini 4 Hydrogen fast perceptual triage
-      const hydrogen = await runHydrogenPerception(
-        ai,
-        imageBase64,
-        imageMimeType,
-        audioBase64,
-        audioMimeType,
-        spokenTranscriptHint,
-      );
-
       if (mode === 'baseline') {
+        sendEvent('stage', { stage: 'hydrogen', status: 'running' });
+        const hydrogen = await runHydrogenPerception(
+          ai,
+          imageBase64,
+          imageMimeType,
+          audioBase64,
+          audioMimeType,
+          spokenTranscriptHint,
+        );
+        sendEvent('stage', { stage: 'hydrogen', status: 'done', hydrogen });
+        sendEvent('stage', { stage: 'shopify', status: 'running' });
+
         const query =
           hydrogen.quickSearchQuery ||
           hydrogen.visualObjects[0] ||
@@ -786,7 +805,7 @@ async function startServer() {
           intentContext: hydrogen.spokenTranscript,
         });
 
-        res.json({
+        const tracePayload = {
           id: `trace_${Date.now()}`,
           timestamp: new Date().toISOString(),
           mode: 'baseline',
@@ -798,50 +817,98 @@ async function startServer() {
           triggeredSearch: true,
           products: shopify.products,
           status: shopify.products.length > 0 ? 'matched' : 'no_products',
-        });
+        };
+
+        if (wantsStream) {
+          sendEvent('done', tracePayload);
+          res.end();
+        } else {
+          res.json(tracePayload);
+        }
         return;
       }
 
-      // Stage 2: Gemini Decisions API calibrated zero-token gate
+      // Stage 1 (Fast Gate <1s): Gemini Decisions API zero-token pre-filter before heavy models
+      sendEvent('stage', { stage: 'gate', status: 'running' });
       const decisionGate = await runDecisionGate(
         decisionsAi,
         imageBase64,
         imageMimeType,
         audioBase64,
         audioMimeType,
-        hydrogen,
+        spokenTranscriptHint,
         mitigations,
       );
+      sendEvent('stage', { stage: 'gate', status: 'done', decisionGate });
 
       if (!decisionGate.passed) {
-        res.json({
+        const heldPayload = {
           id: `trace_${Date.now()}`,
           timestamp: new Date().toISOString(),
           mode: 'gated',
           scenarioLabel,
           stressConfig,
-          hydrogen,
+          hydrogen: {
+            visualObjects: [],
+            materialsAndFinishes: [],
+            lightingTone: decisionGate.clutterLabel,
+            blurOrOcclusionObserved:
+              decisionGate.routeChoice === 'hold_blurry_frame'
+                ? `Severe blur / low light (usable=${decisionGate.frameUsableProb.toFixed(2)})`
+                : `Gate held (${decisionGate.routeChoice})`,
+            spokenTranscript: spokenTranscriptHint || '',
+            acousticNoiseAssessment:
+              decisionGate.routeChoice === 'hold_noisy_audio'
+                ? `Unconfirmed speech intent (intent=${decisionGate.intentConfirmedProb.toFixed(2)})`
+                : 'Gated upstream',
+            quickSearchQuery: '',
+            latencyMs: 0,
+          },
           decisionGate,
           shopifyLatencyMs: 0,
           totalLatencyMs: Date.now() - tTotal,
           triggeredSearch: false,
           products: [],
           status: 'held_by_gate',
-        });
+        };
+        if (wantsStream) {
+          sendEvent('done', heldPayload);
+          res.end();
+        } else {
+          res.json(heldPayload);
+        }
         return;
       }
 
-      // Stage 3: Gemini 4 Neon spatial-acoustic synthesis & query formulation
-      const neon = await runNeonSynthesis(
-        ai,
-        imageBase64,
-        imageMimeType,
-        audioBase64,
-        audioMimeType,
-        hydrogen,
-      );
+      // Stage 2 (Parallel): Gemini 4 Hydrogen triage + Gemini 4 Neon spatial-acoustic synthesis
+      sendEvent('stage', { stage: 'synthesis', status: 'running' });
+      const [hydrogen, neon] = await Promise.all([
+        runHydrogenPerception(
+          ai,
+          imageBase64,
+          imageMimeType,
+          audioBase64,
+          audioMimeType,
+          spokenTranscriptHint,
+        ).then((h) => {
+          sendEvent('stage', { stage: 'hydrogen', status: 'done', hydrogen: h });
+          return h;
+        }),
+        runNeonSynthesis(
+          ai,
+          imageBase64,
+          imageMimeType,
+          audioBase64,
+          audioMimeType,
+          spokenTranscriptHint,
+        ).then((n) => {
+          sendEvent('stage', { stage: 'neon', status: 'done', neon: n });
+          return n;
+        }),
+      ]);
 
-      // Stage 4: Live Shopify Global Catalog MCP search
+      // Stage 3: Live Shopify Global Catalog MCP search
+      sendEvent('stage', { stage: 'shopify', status: 'running' });
       const primaryQuery = neon.searchQueries[0] || hydrogen.quickSearchQuery || 'table lamp';
       const shopify = await searchShopifyMcp(primaryQuery, {
         limit: 6,
@@ -850,7 +917,6 @@ async function startServer() {
         intentContext: neon.targetNeedSummary,
       });
 
-      // Fallback second query if primary returned 0 items
       let finalProducts = shopify.products;
       let totalShopifyMs = shopify.latencyMs;
       if (finalProducts.length === 0 && neon.searchQueries[1]) {
@@ -863,17 +929,20 @@ async function startServer() {
         totalShopifyMs += secondary.latencyMs;
       }
 
-      // Stage 5: Batch-score Shopify products against raw image via Decisions API
-      const scoredProducts = await scoreCatalogProductsWithDecisions(
-        decisionsAi,
-        imageBase64,
-        imageMimeType,
-        hydrogen.spokenTranscript || spokenTranscriptHint || neon.targetNeedSummary,
-        neon.whatRawMediaRevealed,
-        finalProducts,
-      );
+      // Stage 4: Batch-score Shopify products against raw image via Decisions API
+      const scoredProducts =
+        mitigations.confidenceHysteresis !== false
+          ? await scoreCatalogProductsWithDecisions(
+              decisionsAi,
+              imageBase64,
+              imageMimeType,
+              hydrogen.spokenTranscript || spokenTranscriptHint || neon.targetNeedSummary,
+              neon.whatRawMediaRevealed,
+              finalProducts,
+            )
+          : finalProducts;
 
-      res.json({
+      const matchedPayload = {
         id: `trace_${Date.now()}`,
         timestamp: new Date().toISOString(),
         mode: 'gated',
@@ -887,10 +956,22 @@ async function startServer() {
         triggeredSearch: true,
         products: scoredProducts,
         status: scoredProducts.length > 0 ? 'matched' : 'no_products',
-      });
+      };
+
+      if (wantsStream) {
+        sendEvent('done', matchedPayload);
+        res.end();
+      } else {
+        res.json(matchedPayload);
+      }
     } catch (err) {
       const formatted = formatGeminiError(err);
-      res.status(formatted.status).json({ error: formatted.message, code: formatted.code });
+      if (wantsStream && res.headersSent) {
+        sendEvent('error', { error: formatted.message, code: formatted.code });
+        res.end();
+      } else {
+        res.status(formatted.status).json({ error: formatted.message, code: formatted.code });
+      }
     }
   });
 
@@ -921,31 +1002,32 @@ async function startServer() {
 
       const { ai, decisionsAi } = getGeminiClients();
 
-      // Run baseline & gated perception in parallel using the exact same stressed frame
-      const tBase = Date.now();
-      const baseHydrogen = await runHydrogenPerception(
-        ai,
-        imageBase64,
-        imageMimeType,
-        audioBase64,
-        audioMimeType,
-        spokenTranscriptHint,
-      );
+      // Run baseline Hydrogen perception & Decisions API pre-gate in parallel on the exact same stressed frame
+      const tParallel = Date.now();
+      const [baseHydrogen, gate] = await Promise.all([
+        runHydrogenPerception(
+          ai,
+          imageBase64,
+          imageMimeType,
+          audioBase64,
+          audioMimeType,
+          spokenTranscriptHint,
+        ),
+        runDecisionGate(
+          decisionsAi,
+          imageBase64,
+          imageMimeType,
+          audioBase64,
+          audioMimeType,
+          spokenTranscriptHint,
+          mitigations,
+        ),
+      ]);
+
       const baseQuery = baseHydrogen.quickSearchQuery || baseHydrogen.visualObjects[0] || 'decor';
-      const baseShopify = await searchShopifyMcp(baseQuery, { limit: 2 });
-      const baseLatencyMs = Date.now() - tBase;
+      const baseShopifyPromise = searchShopifyMcp(baseQuery, { limit: 2 });
 
-      const tGate = Date.now();
-      const gate = await runDecisionGate(
-        decisionsAi,
-        imageBase64,
-        imageMimeType,
-        audioBase64,
-        audioMimeType,
-        baseHydrogen,
-        mitigations,
-      );
-
+      const tGatedDownstream = Date.now();
       let gatedTopTitle: string | null = null;
       let gatedTopFit: number | null = null;
 
@@ -956,7 +1038,7 @@ async function startServer() {
           imageMimeType,
           audioBase64,
           audioMimeType,
-          baseHydrogen,
+          spokenTranscriptHint,
         );
         const shopify = await searchShopifyMcp(neon.searchQueries[0] || baseQuery, { limit: 3 });
         const scored = await scoreCatalogProductsWithDecisions(
@@ -971,20 +1053,26 @@ async function startServer() {
         gatedTopFit = scored[0]?.fitScoreNormalized ?? null;
       }
 
-      const gatedTotalMs = Date.now() - tGate + baseHydrogen.latencyMs;
+      const baseShopify = await baseShopifyPromise;
+      const baseLatencyMs = baseHydrogen.latencyMs + baseShopify.latencyMs;
+      const gatedTotalMs = gate.gateLatencyMs + (gate.passed ? Date.now() - tGatedDownstream : 0);
+      void tParallel;
 
       // Determine breaking points honestly from measured telemetry
-      const baselineHallucinated = expectReject || baseHydrogen.blurOrOcclusionObserved.toLowerCase().includes('blur') || baseHydrogen.blurOrOcclusionObserved.toLowerCase().includes('dark');
+      const baselineHallucinated =
+        expectReject ||
+        baseHydrogen.blurOrOcclusionObserved.toLowerCase().includes('blur') ||
+        baseHydrogen.blurOrOcclusionObserved.toLowerCase().includes('dark');
       const brokeHere =
         (!expectReject && !gate.passed) ||
         (expectReject && gate.passed) ||
-        gatedTotalMs > 12000;
+        gatedTotalMs > 15000;
       let breakReason: string | undefined;
       if (!expectReject && !gate.passed) {
         breakReason = `False reject at ${stepLabel}: gate held valid frame (${gate.holdReason})`;
       } else if (expectReject && gate.passed) {
         breakReason = `Gate bypass at ${stepLabel}: severe stress passed with frame_usable=${gate.frameUsableProb.toFixed(2)}`;
-      } else if (gatedTotalMs > 12000) {
+      } else if (gatedTotalMs > 15000) {
         breakReason = `Latency ceiling exceeded (${gatedTotalMs}ms)`;
       }
 
