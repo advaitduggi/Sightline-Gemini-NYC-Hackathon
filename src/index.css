@@ -1,23 +1,143 @@
 @import "tailwindcss";
 
-@theme {
-  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+:root {
+  --bg-color: #f2f2f2;
+  --text-color: #111111;
+  --border-color: rgba(30, 30, 30, 0.1);
+  --cobalt: #0052cc;
+  --gray-muted: #b6b5b5;
+  --gray-deep: #838282;
+  --ease-swiss: cubic-bezier(0.77, 0, 0.175, 1);
 }
 
-@layer base {
-  body {
-    font-family: var(--font-sans);
-    background-color: #fafafa;
-    color: #111827;
-  }
+body {
+  font-family: "Satoshi", ui-sans-serif, system-ui, sans-serif;
+  color: var(--text-color);
+  background-color: var(--bg-color);
+  -webkit-font-smoothing: antialiased;
+}
 
-  h1, h2, h3, .font-display {
-    font-family: var(--font-display);
-  }
+.clash-display {
+  font-family: "Clash Display", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+}
 
-  .tabular-nums {
-    font-variant-numeric: tabular-nums;
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+.echo-stack {
+  position: relative;
+  display: inline-block;
+}
+
+.echo-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.echo-1 {
+  transform: translate(-0.04em, -0.04em);
+  color: #bfbfbf;
+}
+.echo-2 {
+  transform: translate(-0.08em, -0.08em);
+  color: #c9c9c9;
+}
+.echo-3 {
+  transform: translate(-0.12em, -0.12em);
+  color: #d1d1d1;
+}
+.echo-4 {
+  transform: translate(-0.16em, -0.16em);
+  color: #d9d9d9;
+}
+
+.nav-link {
+  transition: color 120ms linear;
+}
+
+.nav-link:hover {
+  color: var(--gray-muted);
+}
+
+.btn-invert {
+  transition: all 120ms var(--ease-swiss);
+}
+
+.btn-invert:hover {
+  background-color: var(--text-color);
+  color: var(--bg-color);
+}
+
+.amplitude-bar {
+  animation: amplitude 1.2s infinite ease-in-out alternate;
+}
+
+@keyframes amplitude {
+  from {
+    height: 15%;
   }
+  to {
+    height: 85%;
+  }
+}
+
+.scrim-bottom {
+  background: linear-gradient(to top, rgba(30, 30, 30, 0.55), transparent);
+}
+
+.custom-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1px;
+  background: var(--border-color);
+  outline: none;
+}
+
+.custom-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  background: var(--cobalt);
+  cursor: pointer;
+  border-radius: 0;
+}
+
+.custom-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  background: var(--cobalt);
+  cursor: pointer;
+  border: none;
+  border-radius: 0;
+}
+
+.pipeline-node {
+  position: relative;
+}
+
+.pipeline-node::after {
+  content: "";
+  position: absolute;
+  bottom: -14px;
+  left: 50%;
+  width: 1px;
+  height: 14px;
+  background: var(--border-color);
+}
+
+.pipeline-node:last-child::after {
+  display: none;
 }

@@ -1,4 +1,3 @@
-import { ShoppingBag } from 'lucide-react';
 import { AppView } from '../types';
 
 interface TopBarProps {
@@ -17,19 +16,20 @@ const NAV_ITEMS: Array<{ id: AppView; label: string }> = [
 
 export function TopBar({ activeView, onSelectView, bagCount, onOpenBag }: TopBarProps) {
   return (
-    <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-sm border-b border-neutral-200">
-      <div className="max-w-[1440px] mx-auto px-6 h-16 flex items-center justify-between gap-8">
-        {/* Zone 1: Single text element wordmark */}
+    <header className="sticky top-0 z-50 h-20 bg-[#f2f2f2]/90 backdrop-blur-xl border-b border-[#1e1e1e]/10 px-6 lg:px-8 flex items-center justify-between gap-8">
+      <div className="flex items-center gap-8 lg:gap-12 min-w-0">
         <button
           type="button"
           onClick={() => onSelectView('live')}
-          className="font-display text-xl font-bold tracking-tight text-neutral-900 whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-600 rounded"
+          className="clash-display text-2xl font-bold tracking-tight uppercase text-[#111111] whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-[#0052cc]"
         >
           Sightline
         </button>
 
-        {/* Zone 2: 4 concise single-line navigation links */}
-        <nav className="flex items-center gap-6 overflow-x-auto" aria-label="Primary navigation">
+        <nav
+          className="flex items-center gap-5 lg:gap-8 overflow-x-auto"
+          aria-label="Primary navigation"
+        >
           {NAV_ITEMS.map((item) => {
             const isActive = activeView === item.id;
             return (
@@ -37,36 +37,26 @@ export function TopBar({ activeView, onSelectView, bagCount, onOpenBag }: TopBar
                 key={item.id}
                 type="button"
                 onClick={() => onSelectView(item.id)}
-                className={`relative py-5 text-sm font-medium transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-600 ${
+                className={`nav-link text-[13px] lg:text-[14px] uppercase tracking-wider whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-[#0052cc] ${
                   isActive
-                    ? 'text-neutral-950'
-                    : 'text-neutral-500 hover:text-neutral-900'
+                    ? 'font-bold text-[#111111]'
+                    : 'font-medium text-[#838282]'
                 }`}
               >
                 {item.label}
-                {isActive && (
-                  <span
-                    aria-hidden="true"
-                    className="absolute inset-x-0 bottom-0 h-0.5 bg-blue-700"
-                  />
-                )}
               </button>
             );
           })}
         </nav>
-
-        {/* Zone 3: 1 primary action */}
-        <div className="shrink-0">
-          <button
-            type="button"
-            onClick={onOpenBag}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-700 hover:bg-blue-800 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-700"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span className="tabular-nums">Shopping Bag ({bagCount})</span>
-          </button>
-        </div>
       </div>
+
+      <button
+        type="button"
+        onClick={onOpenBag}
+        className="btn-invert border border-[#1e1e1e] px-5 lg:px-6 py-2 rounded-full text-[13px] lg:text-[14px] uppercase font-bold whitespace-nowrap shrink-0 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0052cc]"
+      >
+        <span className="mono">Shopping Bag ({bagCount})</span>
+      </button>
     </header>
   );
 }

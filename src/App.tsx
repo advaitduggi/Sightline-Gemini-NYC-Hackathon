@@ -71,7 +71,31 @@ export default function App() {
   const bagCount = bagItems.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-[#111827] flex flex-col">
+    <div className="min-h-screen bg-[#f2f2f2] text-[#111111] flex flex-col relative isolate">
+      {/* Fixed Background Echo Stack (Part G) */}
+      <div
+        aria-hidden="true"
+        className="fixed inset-0 flex items-center justify-center -z-10 pointer-events-none opacity-20 overflow-hidden select-none"
+      >
+        <div className="echo-stack">
+          <span className="clash-display text-[18vw] font-bold uppercase opacity-10">
+            Sightline
+          </span>
+          <span className="clash-display text-[18vw] font-bold uppercase echo-layer echo-1">
+            Sightline
+          </span>
+          <span className="clash-display text-[18vw] font-bold uppercase echo-layer echo-2">
+            Sightline
+          </span>
+          <span className="clash-display text-[18vw] font-bold uppercase echo-layer echo-3">
+            Sightline
+          </span>
+          <span className="clash-display text-[18vw] font-bold uppercase echo-layer echo-4">
+            Sightline
+          </span>
+        </div>
+      </div>
+
       <TopBar
         activeView={activeView}
         onSelectView={setActiveView}
